@@ -1,0 +1,40 @@
+import { Router } from "express";
+import authRoutes from "./auth.routes";
+import userRoutes from "./user.routes";
+import profileRoutes from "./profile.routes";
+import followRoutes from "./follow.routes";
+import postRoutes from "./post.routes";
+import articleRoutes from "./article.routes";
+import commentRoutes from "./comment.routes";
+import bookmarkRoutes from "./bookmark.routes";
+import likeRoutes from "./like.routes";
+import collectionRoutes from "./collection.routes";
+import feedRoutes from "./feed.routes";
+import notificationRoutes from "./notification.routes";
+import uploadRoutes from "./upload.routes";
+import searchRoutes from "./search.routes";
+import exploreRoutes from "./explore.routes";
+import savedRoutes from "./saved.routes";
+import settingsRoutes from "./settings.routes";
+
+const router = Router();
+
+router.use("/auth", authRoutes);
+router.use("/users", userRoutes);
+router.use("/profiles", profileRoutes);
+router.use("/follows", followRoutes);
+router.use("/posts", postRoutes);
+router.use("/articles", articleRoutes);
+router.use("/comments", commentRoutes);
+router.use("/bookmarks", bookmarkRoutes);
+router.use("/likes", likeRoutes);
+router.use("/collections", collectionRoutes);
+router.use("/saved", savedRoutes);
+router.use("/settings", settingsRoutes);
+router.use("/feed", feedRoutes);
+router.use("/notifications", notificationRoutes);
+router.use("/uploads", uploadRoutes);
+router.use("/search", searchRoutes);
+router.use("/explore", exploreRoutes);
+
+export default router;
