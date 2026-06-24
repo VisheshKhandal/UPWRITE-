@@ -30,17 +30,15 @@ export const exploreService = {
 
   async topArticles() {
     return cached("explore:top-articles", () => {
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       return ArticleModel.find({
         status: ArticleStatus.PUBLISHED,
-        deletedAt: { $exists: false },
-        publishedAt: { $gte: weekAgo }
+        deletedAt: { $exists: false }
       })
         .sort({
           "stats.viewsCount": -1,
           "stats.likesCount": -1,
           "stats.bookmarksCount": -1,
-          publishedAt: -1
+          createdAt: -1
         })
         .limit(5)
         .select("-content")

@@ -1,4 +1,4 @@
-import { CheckCircle2, Globe, MapPin } from "lucide-react";
+import { CheckCircle2, ExternalLink, Github, Globe, Linkedin, MapPin, Twitter } from "lucide-react";
 import type { User } from "../../types/models";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
@@ -44,7 +44,11 @@ export const ProfileHeader = ({
               ) : null}
             </div>
             <p className="mt-1 text-sm text-ink-500">@{profile.username}</p>
-            {profile.bio ? <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-600 dark:text-ink-400">{profile.bio}</p> : null}
+            <div className="mt-3 max-w-2xl rounded-lg border border-ink-200 bg-ink-50 px-4 py-3 dark:border-ink-800 dark:bg-ink-900/70">
+              <p className="text-sm leading-6 text-ink-700 dark:text-ink-300">
+                {profile.bio ?? "This creator is still shaping their Upwrite profile."}
+              </p>
+            </div>
             <div className="mt-4 flex flex-wrap gap-3 text-sm text-ink-500">
               {profile.location ? (
                 <span className="inline-flex items-center gap-1">
@@ -63,8 +67,23 @@ export const ProfileHeader = ({
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-accent-700 hover:text-accent-900 dark:text-accent-300 dark:hover:text-accent-100"
                 >
-                  <ExternalLinkIcon />
+                  <ExternalLink className="h-4 w-4" />
                   Website
+                </a>
+              ) : null}
+              {profile.socialLinks?.github ? (
+                <a href={profile.socialLinks.github} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ink-600 hover:text-ink-950 dark:text-ink-300 dark:hover:text-ink-50">
+                  <Github className="h-4 w-4" /> GitHub
+                </a>
+              ) : null}
+              {profile.socialLinks?.linkedin ? (
+                <a href={profile.socialLinks.linkedin} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ink-600 hover:text-ink-950 dark:text-ink-300 dark:hover:text-ink-50">
+                  <Linkedin className="h-4 w-4" /> LinkedIn
+                </a>
+              ) : null}
+              {profile.socialLinks?.twitter ? (
+                <a href={profile.socialLinks.twitter} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ink-600 hover:text-ink-950 dark:text-ink-300 dark:hover:text-ink-50">
+                  <Twitter className="h-4 w-4" /> Twitter
                 </a>
               ) : null}
             </div>
@@ -90,12 +109,4 @@ export const ProfileHeader = ({
       </div>
     </div>
   </Card>
-);
-
-const ExternalLinkIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M14 3h7v7" />
-    <path d="M10 14L21 3" />
-    <path d="M21 21H3V3" />
-  </svg>
 );

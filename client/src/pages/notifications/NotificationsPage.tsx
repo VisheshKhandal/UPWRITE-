@@ -13,6 +13,7 @@ export default function NotificationsPage() {
   const { data: notifications = [], isLoading, error } = useNotificationsQuery({ limit: 30 });
   const [markRead] = useMarkNotificationReadMutation();
   const [markAllRead, markAllState] = useMarkAllNotificationsReadMutation();
+  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -20,9 +21,10 @@ export default function NotificationsPage() {
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Notifications</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-normal">Useful signals, not noise.</h1>
+          <p className="mt-2 text-sm text-ink-500">{unreadCount ? `${unreadCount} unread update${unreadCount === 1 ? "" : "s"}` : "You are all caught up."}</p>
         </div>
-        <Button variant="secondary" loading={markAllState.isLoading} onClick={() => markAllRead()}>
-          Mark all read
+        <Button variant="secondary" loading={markAllState.isLoading} disabled={!unreadCount} onClick={() => markAllRead()}>
+          Mark All As Read
         </Button>
       </section>
       {isLoading ? <FeedSkeleton /> : null}

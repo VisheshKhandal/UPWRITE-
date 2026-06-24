@@ -20,6 +20,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
   const [open, setOpen] = useState(false);
   const [newCollection, setNewCollection] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  const [saved, setSaved] = useState(false);
   const { data: collections = [] } = useCollectionsQuery({ limit: 30 }, { skip: !open });
   const [saveContent, saveState] = useSaveContentMutation();
   const [createCollection, createState] = useCreateCollectionMutation();
@@ -27,6 +28,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
   const save = async (collection?: string) => {
     try {
       await saveContent({ contentType, contentId, collection }).unwrap();
+      setSaved(true);
       dispatch(pushToast({ title: "Saved", tone: "success" }));
       setOpen(false);
     } catch (error) {
@@ -57,9 +59,10 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
         disabled={saveState.isLoading}
         onClick={() => setOpen(true)}
         aria-label="Save"
+        className={saved ? "text-accent-700 dark:text-accent-300" : undefined}
       >
-        <Bookmark className="h-4 w-4" />
-        {compact ? null : "Save"}
+        <Bookmark className={`h-4 w-4 transition-transform duration-200 ${saved ? "scale-110 fill-current" : ""}`} />
+        {compact ? null : saved ? "Saved" : "Save"}
       </Button>
 
       {open ? (

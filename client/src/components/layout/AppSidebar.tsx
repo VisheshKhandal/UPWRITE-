@@ -14,11 +14,11 @@ import { cn } from "../../utils/cn";
 import { BrandLogo } from "../brand/BrandLogo";
 
 const navItems = [
-  { to: "/", label: "Feed", icon: Home },
+  { to: "/", label: "Home", icon: Home },
   { to: "/search", label: "Explore", icon: Search },
   { to: "/write", label: "Write", icon: PenLine },
   { to: "/notifications", label: "Notifications", icon: Bell },
-  { to: "/saved", label: "Saved", icon: Bookmark },
+  { to: "/saved", label: "Bookmarks", icon: Bookmark },
   { to: "/settings/profile", label: "Settings", icon: Settings }
 ];
 
@@ -42,14 +42,18 @@ export const AppSidebar = () => {
             data-tour={item.label.toLowerCase()}
             className={({ isActive }) =>
               cn(
-                "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-ink-50",
+                "group flex h-12 items-center gap-3 rounded-lg border border-transparent px-3 text-[0.95rem] font-semibold text-ink-600 transition-all duration-200 hover:bg-ink-100 hover:text-ink-950 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-ink-50",
                 isActive &&
-                  "bg-white text-ink-950 shadow-panel dark:bg-ink-900 dark:text-ink-50"
+                  "border-accent-200/70 bg-accent-50/80 text-ink-950 shadow-panel ring-1 ring-accent-200/40 dark:border-accent-800/60 dark:bg-ink-900/80 dark:text-ink-50 dark:shadow-[0_0_0_1px_rgba(52,138,109,0.08),0_10px_30px_rgba(0,0,0,0.18)] dark:ring-accent-700/25"
               )
             }
           >
-            <item.icon className="h-4 w-4" />
-            {item.label}
+            {({ isActive }) => (
+              <>
+                <item.icon className={cn("h-4 w-4 transition-colors", isActive ? "text-accent-700 dark:text-accent-300" : "text-ink-400 group-hover:text-ink-700 dark:group-hover:text-ink-200")} />
+                {item.label}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -63,14 +67,18 @@ export const AppSidebar = () => {
             to="/about"
             className={({ isActive }) =>
               cn(
-                "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-ink-50",
+                "group flex h-11 items-center gap-3 rounded-lg border border-transparent px-3 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-ink-50",
                 isActive &&
-                  "bg-white text-ink-950 shadow-panel dark:bg-ink-900 dark:text-ink-50"
+                  "border-accent-200/70 bg-accent-50/80 text-ink-950 shadow-panel ring-1 ring-accent-200/40 dark:border-accent-800/60 dark:bg-ink-900/80 dark:text-ink-50 dark:ring-accent-700/25"
               )
             }
           >
-            <Info className="h-4 w-4" />
-            About
+            {({ isActive }) => (
+              <>
+                <Info className={cn("h-4 w-4 transition-colors", isActive ? "text-accent-700 dark:text-accent-300" : "text-ink-400 group-hover:text-ink-700 dark:group-hover:text-ink-200")} />
+                About
+              </>
+            )}
           </NavLink>
         </div>
 

@@ -91,12 +91,15 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
 
   const profileStrength = Math.round((completionScore / 5) * 100);
   const featuredArticle = articles.data?.[0] ?? null;
+  const totalReads = articles.data?.reduce((sum, article) => sum + (article.stats?.viewsCount ?? 0), 0) ?? 0;
+  const totalLikes = profile.data?.likesReceived ?? articles.data?.reduce((sum, article) => sum + (article.stats?.likesCount ?? 0), 0) ?? 0;
 
   const stats = [
     { label: "Articles", value: profile.data?.stats?.articlesCount ?? 0 },
     { label: "Posts", value: profile.data?.stats?.postsCount ?? 0 },
-    { label: "Followers", value: profile.data?.stats?.followersCount ?? 0 },
-    { label: "Likes", value: profile.data?.likesReceived ?? 0 }
+    { label: "Total reads", value: totalReads },
+    { label: "Total likes", value: totalLikes },
+    { label: "Followers", value: profile.data?.stats?.followersCount ?? 0 }
   ];
 
   // if (profile.isLoading) return <FeedSkeleton />;
@@ -124,9 +127,9 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
         <Card className="p-5">
           <div className="flex flex-col gap-4">
             <div>
-              <p className="text-sm uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Featured content</p>
-              <h2 className="mt-2 text-xl font-semibold text-ink-950 dark:text-ink-50">Keep spotlighting your best work</h2>
-              <p className="mt-2 text-sm text-ink-600 dark:text-ink-400">Pin a top article or continue building your narrative as a creator.</p>
+              <p className="text-sm uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Pinned article</p>
+              <h2 className="mt-2 text-xl font-semibold text-ink-950 dark:text-ink-50">{isOwnProfile ? "Spotlight your best work" : `${profile.data.name}'s featured work`}</h2>
+              <p className="mt-2 text-sm text-ink-600 dark:text-ink-400">The latest published article is highlighted here until explicit pinning is available.</p>
             </div>
             {featuredArticle ? (
               <div className="rounded-3xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/70">

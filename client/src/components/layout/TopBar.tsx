@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bookmark, HelpCircle, Lock, LogOut, Moon, Palette, PenLine, Search, Settings, Sun, UserRound, X } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { logout } from "../../features/auth/authSlice";
 import { useLogoutUserMutation } from "../../features/auth/authApi";
 import { pushToast, toggleTheme } from "../../features/ui/uiSlice";
+import { SearchDiscovery } from "../search/SearchDiscovery";
 import { Button } from "../ui/Button";
 import { BrandLogo } from "../brand/BrandLogo";
 import { Avatar } from "../ui/Avatar";
@@ -14,7 +15,6 @@ export const TopBar = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const theme = useAppSelector((state) => state.ui.theme);
   const user = useAppSelector((state) => state.auth.user);
@@ -56,13 +56,6 @@ export const TopBar = () => {
     dispatch(pushToast({ title: "Logged out", tone: "info" }));
     setMenuOpen(false);
     navigate("/login");
-  };
-
-  const onSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!search.trim()) return;
-    navigate(`/search?q=${encodeURIComponent(search.trim())}`);
-    setSearch("");
   };
 
   const go = (to: string) => {
@@ -117,10 +110,7 @@ export const TopBar = () => {
       <header className="sticky top-0 z-20 border-b border-ink-200 bg-ink-50/90 backdrop-blur dark:border-ink-800 dark:bg-ink-950/90">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <BrandLogo showName={false} size="sm" className="lg:hidden" />
-          <form onSubmit={onSearch} className="hidden h-10 flex-1 max-w-md items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 text-sm text-ink-500 dark:border-ink-800 dark:bg-ink-900 md:flex">
-            <Search className="h-4 w-4" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users, articles, posts, and tags" className="w-full bg-transparent text-sm text-ink-900 outline-none placeholder:text-ink-400 dark:text-ink-100" />
-          </form>
+          <SearchDiscovery className="relative hidden max-w-md flex-1 md:block" />
           <div className="flex items-center gap-2 md:ml-auto">
             <Button variant="secondary" size="icon" className="md:hidden" onClick={() => navigate("/search")} aria-label="Search"><Search className="h-4 w-4" /></Button>
             <Button variant="secondary" size="icon" onClick={() => dispatch(toggleTheme())} aria-label="Toggle theme">{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>

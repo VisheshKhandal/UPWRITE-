@@ -128,6 +128,7 @@ html.dark[data-contrast="high"] body {
 
   .reading-prose {
     @apply font-reading text-[1.08rem] leading-8 text-ink-800 dark:text-ink-200;
+    overflow-wrap: anywhere;
   }
 
   html[data-font-size="small"] .reading-prose {
@@ -170,23 +171,23 @@ html.dark[data-contrast="high"] body {
   .reading-prose h1,
   .reading-prose h2,
   .reading-prose h3 {
-    @apply font-sans font-semibold tracking-normal text-ink-950 dark:text-ink-50;
+    @apply scroll-mt-24 font-sans font-semibold tracking-normal text-ink-950 dark:text-ink-50;
   }
 
   .reading-prose h1 {
-    @apply mt-8 text-4xl leading-tight;
+    @apply mt-12 text-4xl leading-tight;
   }
 
   .reading-prose h2 {
-    @apply mt-8 text-2xl;
+    @apply mt-12 border-t border-ink-200 pt-8 text-3xl leading-tight dark:border-ink-800;
   }
 
   .reading-prose h3 {
-    @apply mt-6 text-xl;
+    @apply mt-9 text-2xl leading-snug;
   }
 
   .reading-prose p {
-    @apply my-5;
+    @apply my-6 leading-8;
   }
 
   .reading-prose ul,
@@ -195,22 +196,42 @@ html.dark[data-contrast="high"] body {
   }
 
   .reading-prose li {
-    @apply my-2;
+    @apply my-2 pl-1;
   }
 
   .reading-prose blockquote {
-    @apply my-6 border-l-2 border-accent-500 pl-5 text-ink-700 dark:text-ink-300;
+    @apply my-8 rounded-r-xl border-l-4 border-accent-500 bg-accent-50/70 px-5 py-4 text-ink-700 dark:bg-accent-900/20 dark:text-ink-300;
   }
 
   .reading-prose code {
-    @apply rounded bg-ink-100 px-1.5 py-0.5 font-mono text-sm dark:bg-ink-800;
+    @apply rounded-md border border-ink-200 bg-ink-100 px-1.5 py-0.5 font-mono text-[0.9em] text-ink-900 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100;
   }
 
   .reading-prose pre {
-    @apply my-6 overflow-x-auto rounded-lg bg-ink-950 p-4 text-sm text-ink-100;
+    @apply my-8 overflow-x-auto rounded-xl border border-ink-800 bg-ink-950 p-5 text-sm leading-7 text-ink-100 shadow-panel;
   }
 
   .reading-prose pre code {
-    @apply bg-transparent p-0 text-inherit;
+    @apply border-0 bg-transparent p-0 text-inherit;
+  }
+
+  .reading-prose a {
+    @apply font-medium text-accent-700 underline decoration-accent-300 underline-offset-4 hover:text-accent-900 dark:text-accent-300 dark:hover:text-accent-100;
+  }
+
+  .reading-prose table {
+    @apply my-8 block w-full overflow-x-auto rounded-xl border border-ink-200 text-sm dark:border-ink-800;
+  }
+
+  .reading-prose th {
+    @apply bg-ink-100 px-4 py-3 text-left font-semibold text-ink-950 dark:bg-ink-900 dark:text-ink-50;
+  }
+
+  .reading-prose td {
+    @apply border-t border-ink-200 px-4 py-3 align-top dark:border-ink-800;
+  }
+
+  .reading-prose img {
+    @apply my-8 rounded-xl border border-ink-200 shadow-panel dark:border-ink-800;
   }
 }

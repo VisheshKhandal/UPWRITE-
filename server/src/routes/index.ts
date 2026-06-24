@@ -16,6 +16,7 @@ import searchRoutes from "./search.routes";
 import exploreRoutes from "./explore.routes";
 import savedRoutes from "./saved.routes";
 import settingsRoutes from "./settings.routes";
+import aiRoutes from "./ai.routes";
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use("/notifications", notificationRoutes);
 router.use("/uploads", uploadRoutes);
 router.use("/search", searchRoutes);
 router.use("/explore", exploreRoutes);
+router.use("/ai", aiRoutes);
 
 export default router;

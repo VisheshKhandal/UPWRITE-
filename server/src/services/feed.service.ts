@@ -34,12 +34,10 @@ export const feedService = {
     const [posts, articles] = await Promise.all([
       PostModel.find(postFilter)
         .sort({ createdAt: -1 })
-        .limit(skip + limit)
         .populate("author", "name username avatar")
         .lean(),
       ArticleModel.find(articleFilter)
-        .sort({ publishedAt: -1 })
-        .limit(skip + limit)
+        .sort({ createdAt: -1 })
         .select("-content")
         .populate("author", "name username avatar")
         .lean()
@@ -55,7 +53,7 @@ export const feedService = {
       ...posts.map((post) => ({ type: "post", createdAt: post.createdAt, score: score(post.tags), item: post })),
       ...articles.map((article) => ({
         type: "article",
-        createdAt: article.publishedAt ?? article.createdAt,
+        createdAt: article.createdAt,
         score: score(article.tags),
         item: article
       }))
@@ -69,31 +67,51 @@ export const feedService = {
 
   async trending(req: Request) {
     const { page, limit, skip } = getPagination(req);
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const [posts, articles] = await Promise.all([
-      PostModel.find({ deletedAt: { $exists: false }, createdAt: { $gte: since } })
+      PostModel.find({ deletedAt: { $exists: false } })
         .sort({ "engagement.likesCount": -1, "engagement.commentsCount": -1, createdAt: -1 })
-        .limit(skip + limit)
         .populate("author", "name username avatar")
         .lean(),
       ArticleModel.find({
         deletedAt: { $exists: false },
-        status: ArticleStatus.PUBLISHED,
-        publishedAt: { $gte: since }
+        status: ArticleStatus.PUBLISHED
       })
-        .sort({ "stats.likesCount": -1, "stats.commentsCount": -1, publishedAt: -1 })
+        .sort({
+          "stats.likesCount": -1,
+          "stats.viewsCount": -1,
+          "stats.bookmarksCount": -1,
+          createdAt: -1
+        })
         .select("-content")
-        .limit(skip + limit)
         .populate("author", "name username avatar")
         .lean()
     ]);
 
     const items = [
-      ...posts.map((post) => ({ type: "post", item: post })),
-      ...articles.map((article) => ({ type: "article", item: article }))
-    ];
+      ...posts.map((post) => ({
+        type: "post" as const,
+        popularity:
+          (post.engagement?.likesCount ?? 0) +
+          (post.engagement?.bookmarksCount ?? 0) +
+          (post.engagement?.sharesCount ?? 0),
+        createdAt: post.createdAt,
+        item: post
+      })),
+      ...articles.map((article) => ({
+        type: "article" as const,
+        popularity:
+          (article.stats?.likesCount ?? 0) +
+          (article.stats?.viewsCount ?? 0) +
+          (article.stats?.bookmarksCount ?? 0),
+        createdAt: article.createdAt,
+        item: article
+      }))
+    ].sort((a, b) => b.popularity - a.popularity || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    return { items: items.slice(skip, skip + limit), meta: paginationMeta(page, limit, items.length) };
+    return {
+      items: items.slice(skip, skip + limit).map(({ popularity: _popularity, ...item }) => item),
+      meta: paginationMeta(page, limit, items.length)
+    };
   }
 };
