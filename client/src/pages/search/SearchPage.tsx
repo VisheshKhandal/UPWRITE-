@@ -70,16 +70,18 @@ export default function SearchPage() {
     () => !!(data?.users?.length || data?.articles?.length || data?.posts?.length || data?.tags?.length),
     [data]
   );
+  const exploreArticleCardClassName =
+    "max-w-full min-w-0 md:max-w-none [&_*]:min-w-0 [&_h2]:break-words [&_img]:max-w-full [&_.inline-flex]:max-w-full";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <section>
+    <div className="mx-auto max-w-6xl space-y-5 overflow-x-hidden md:overflow-visible">
+      <section className="min-w-0">
         <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Explore</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-normal">Discover ideas, creators, and conversations.</h1>
+        <h1 className="mt-2 break-words text-3xl font-semibold tracking-normal">Discover ideas, creators, and conversations.</h1>
         <p className="mt-2 text-sm text-ink-500">Trending articles are ranked by recent reads, likes, and creator activity.</p>
       </section>
 
-      <Card className="sticky top-16 z-10 p-3 shadow-panel sm:p-4">
+      <Card className="relative z-10 max-w-full p-3 shadow-panel sm:p-4 md:sticky md:top-16">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
@@ -138,16 +140,16 @@ export default function SearchPage() {
               </div>
             ) : null}
           </div>
-          <div className="overflow-x-auto">
-            <Tabs value={type} onChange={setType} items={searchTabs} />
+          <div className="max-w-full min-w-0 overflow-hidden md:overflow-x-auto">
+            <Tabs value={type} onChange={setType} items={searchTabs} className="flex w-full flex-wrap md:inline-flex md:w-auto md:flex-nowrap" />
           </div>
         </div>
       </Card>
 
-      <div className={`transition-opacity duration-200 ${isFetching ? "opacity-70" : "opacity-100"}`}>
+      <div className={`min-w-0 transition-opacity duration-200 ${isFetching ? "opacity-70" : "opacity-100"}`}>
         {!searching ? (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-            <div className="space-y-5">
+          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+            <div className="min-w-0 space-y-5">
               <section>
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold text-ink-950 dark:text-ink-50">Top articles this week</h2>
@@ -161,12 +163,12 @@ export default function SearchPage() {
                   {!topArticlesQuery.isLoading && !topArticlesQuery.error && !topArticles.length ? (
                     <EmptyState title="No articles yet" description="Published articles will appear here as soon as they are available." />
                   ) : null}
-                  {topArticles.map((article) => <ArticleCard key={article._id} article={article} />)}
+                  {topArticles.map((article) => <ArticleCard key={article._id} article={article} className={exploreArticleCardClassName} />)}
                 </div>
               </section>
             </div>
 
-            <aside className="space-y-5">
+            <aside className="min-w-0 space-y-5">
               <Card className="p-4">
                 <h2 className="font-semibold text-ink-950 dark:text-ink-50">Popular Articles</h2>
                 <div className="mt-4 space-y-3">
@@ -174,15 +176,15 @@ export default function SearchPage() {
                     <Link
                       key={article._id}
                       to={`/articles/${article.author?.username}/${article.slug}`}
-                      className="flex items-start gap-3 rounded-lg p-2 transition hover:bg-ink-50 dark:hover:bg-ink-900"
+                      className="flex min-w-0 max-w-full items-start gap-3 rounded-lg p-2 transition hover:bg-ink-50 dark:hover:bg-ink-900"
                     >
                       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-700 dark:bg-accent-950/40 dark:text-accent-300">
                         <FileText className="h-4 w-4" />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-ink-950 dark:text-ink-50">{article.title}</p>
-                        <p className="mt-0.5 flex items-center gap-2 text-xs text-ink-500">
-                          <span>{article.author?.name}</span>
+                        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-ink-500">
+                          <span className="min-w-0 truncate">{article.author?.name}</span>
                           <span>·</span>
                           <span className="inline-flex items-center gap-1">
                             <Clock className="h-3 w-3" />
@@ -222,7 +224,7 @@ export default function SearchPage() {
               <EmptyState title="No results found" description="Try a broader phrase, a creator name, or a shorter topic keyword." />
             ) : null}
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-2">
               {(type === "all" || type === "users") && data?.users?.map((user) => (
                 <Card key={user._id} className="p-4">
                   <Link to={`/profile/${user.username}`} className="flex items-center gap-3">
@@ -235,7 +237,7 @@ export default function SearchPage() {
                   </Link>
                 </Card>
               ))}
-              {(type === "all" || type === "articles") && data?.articles?.map((article) => <ArticleCard key={article._id} article={article} />)}
+              {(type === "all" || type === "articles") && data?.articles?.map((article) => <ArticleCard key={article._id} article={article} className={exploreArticleCardClassName} />)}
               {(type === "all" || type === "posts") && data?.posts?.map((post) => <PostCard key={post._id} post={post} />)}
               {(type === "all" || type === "tags") && data?.tags?.map((tag) => (
                 <Card key={tag._id} className="p-4">

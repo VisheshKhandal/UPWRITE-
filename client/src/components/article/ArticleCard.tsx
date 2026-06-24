@@ -11,13 +11,16 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import type { ReactNode } from "react";
 import { SaveToCollectionButton } from "../saved/SaveToCollectionButton";
+import { cn } from "../../utils/cn";
 
 export const ArticleCard = ({
   article,
-  actions
+  actions,
+  className
 }: {
   article: Article;
   actions?: ReactNode;
+  className?: string;
 }) => {
   const [toggleLike, { isLoading: liking }] = useToggleLikeMutation();
   const articleUrl = `/articles/${article.author?.username}/${article.slug}`;
@@ -40,7 +43,7 @@ export const ArticleCard = ({
   };
 
   return (
-    <Card className="group overflow-hidden border-ink-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-xl dark:border-ink-800 dark:hover:border-accent-800">
+    <Card className={cn("group overflow-hidden border-ink-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-xl dark:border-ink-800 dark:hover:border-accent-800", className)}>
       <Link to={articleUrl} className="block">
         {getImageSrc(article.coverImage) ? (
           <img
