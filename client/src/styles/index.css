@@ -163,12 +163,28 @@ html.dark[data-contrast="high"] body {
     @apply mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8;
   }
 
+  .article-shell {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .article-content {
+    @apply w-full max-w-[46rem];
+  }
+
   html[data-reading-width="narrow"] .content-width {
+    @apply max-w-2xl;
+  }
+
+  html[data-reading-width="narrow"] .article-content {
     @apply max-w-2xl;
   }
 
   html[data-reading-width="wide"] .content-width {
     @apply max-w-5xl;
+  }
+
+  html[data-reading-width="wide"] .article-content {
+    @apply max-w-4xl;
   }
 
   .reading-prose {

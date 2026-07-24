@@ -593,6 +593,14 @@ export default function ArticleDetailPage() {
     }
   };
 
+  const goBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/read", { replace: true });
+  };
+
   const openTwitter = () => {
     window.open(
       `https://twitter.com/intent/tweet?text=${encodeURIComponent(article.title)}&url=${encodeURIComponent(articleUrl)}`,
@@ -663,15 +671,15 @@ export default function ArticleDetailPage() {
       <div className="fixed inset-x-0 top-0 z-40 h-1 bg-ink-100/50 backdrop-blur-sm">
         <div className="h-full rounded-full bg-accent-600 transition-[width] duration-200 dark:bg-accent-400" style={{ width: `${progress}%` }} />
       </div>
-      <article className="content-width mx-auto grid gap-8 pb-32 pt-6 lg:grid-cols-[64px_minmax(0,1fr)_320px]">
+      <article className="article-shell grid gap-8 pb-32 pt-6 lg:grid-cols-[64px_minmax(0,1fr)_320px]">
         <nav className="sticky top-28 hidden h-max flex-col gap-2 lg:flex" aria-label="Reading tools">
-          <Button size="icon" variant="ghost" onClick={() => navigate(-1)} aria-label="Back"><ArrowLeft className="h-4 w-4" /></Button>
+          <Button size="icon" variant="ghost" onClick={goBack} aria-label="Back"><ArrowLeft className="h-4 w-4" /></Button>
           <SaveToCollectionButton contentType="article" contentId={article._id} compact />
           <Button size="icon" variant="ghost" onClick={() => { setRightTab("ai"); setIsAiOpen(true); }} aria-label="Ask AI"><Sparkles className="h-4 w-4" /></Button>
           <Button size="icon" variant="ghost" onClick={() => dispatch(pushToast({ title: "Select text to highlight it", tone: "info" }))} aria-label="Highlight"><Highlighter className="h-4 w-4" /></Button>
           <Button size="icon" variant="ghost" onClick={() => setRightTab("notes")} aria-label="Notes"><StickyNote className="h-4 w-4" /></Button>
         </nav>
-        <div>
+        <div className="article-content">
           <SafeImage
             src={getImageSrc(article.coverImage)}
             alt={article.title}
