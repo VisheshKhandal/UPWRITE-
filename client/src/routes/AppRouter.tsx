@@ -53,18 +53,18 @@ export const AppRouter = () => (
             <Route path="/search" element={<SearchPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/help" element={<HelpPage />} />
+            <Route path="/learn" element={<ReviewPage />} />
+            <Route path="/review" element={<Navigate to="/learn" replace />} />
+            <Route path="/saved" element={<SavedPage />} />
+            <Route path="/library" element={<SavedPage />} />
+            <Route path="/bookmarks" element={<Navigate to="/saved" replace />} />
+            <Route path="/collections" element={<Navigate to="/saved" replace />} />
+            <Route path="/write" element={<WritePage />} />
 
             <Route element={<ProtectedRoute />}>
-              <Route path="/learn" element={<ReviewPage />} />
-              <Route path="/review" element={<Navigate to="/learn" replace />} />
               <Route path="/studio" element={<StudioPage />} />
-              <Route path="/write" element={<WritePage />} />
               <Route path="/write/:id" element={<WritePage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/saved" element={<SavedPage />} />
-              <Route path="/library" element={<SavedPage />} />
-              <Route path="/bookmarks" element={<Navigate to="/saved" replace />} />
-              <Route path="/collections" element={<Navigate to="/saved" replace />} />
               <Route path="/settings/profile" element={<ProfileSettingsPage />} />
             </Route>
           </Route>

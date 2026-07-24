@@ -11,7 +11,7 @@ import { Input } from "../../components/ui/Input";
 import { Tabs } from "../../components/ui/Tabs";
 import { Textarea } from "../../components/ui/Textarea";
 import { LibraryTabs } from "../../components/library/LibraryTabs";
-import { useAppDispatch } from "../../app/hooks";
+import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { pushToast } from "../../features/ui/uiSlice";
 import {
   useCollectionsQuery,
@@ -24,6 +24,7 @@ import { useFlashcardSetsQuery } from "../../features/ai/aiApi";
 import { useFlashcardsQuery } from "../../features/flashcards/flashcardsApi";
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
 import type { Article, Collection, Post, SavedItem } from "../../types/models";
+import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
 const searchableText = (item: SavedItem) => {
   const content = item.item;
@@ -36,6 +37,11 @@ const searchableText = (item: SavedItem) => {
 export default function SavedPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const user = useAppSelector((state) => state.auth.user);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+    open: false,
+    message: "Continue with Upwrite"
+  });
   const [activeCollection, setActiveCollection] = useState("all");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -44,14 +50,14 @@ export default function SavedPage() {
   const [libraryTab, setLibraryTab] = useState("All");
   const [query, setQuery] = useState("");
 
-  const { data: collections = [] } = useCollectionsQuery({ limit: 50 });
+  const { data: collections = [] } = useCollectionsQuery({ limit: 50 }, { skip: !user });
   const { data: saved = [], isLoading } = useSavedQuery({
     limit: 40,
     ...(activeCollection !== "all" ? { collection: activeCollection } : {})
-  });
-  const { data: flashcardSets = [] } = useFlashcardSetsQuery();
-  const { data: reviewCards = [] } = useFlashcardsQuery();
-  const { data: progress = [] } = useReadingProgressQuery();
+  }, { skip: !user });
+  const { data: flashcardSets = [] } = useFlashcardSetsQuery(undefined, { skip: !user });
+  const { data: reviewCards = [] } = useFlashcardsQuery(undefined, { skip: !user });
+  const { data: progress = [] } = useReadingProgressQuery(undefined, { skip: !user });
   const [createCollection, createState] = useCreateCollectionMutation();
   const [updateCollection, updateState] = useUpdateCollectionMutation();
   const [deleteCollection] = useDeleteCollectionMutation();
@@ -90,6 +96,10 @@ export default function SavedPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in to organize your knowledge.", action: "collection" });
+      return;
+    }
 
     if (editing) {
       await updateCollection({ id: editing._id, body: { name, description, isPublic } }).unwrap();
@@ -102,6 +112,10 @@ export default function SavedPage() {
   };
 
   const startEdit = (collection: Collection) => {
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in to organize your knowledge.", action: "collection" });
+      return;
+    }
     setEditing(collection);
     setName(collection.name);
     setDescription(collection.description ?? "");
@@ -128,6 +142,15 @@ export default function SavedPage() {
     }
   };
 
+  const deleteCollectionWithAuth = async (collection: Collection) => {
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in to organize your knowledge.", action: "collection" });
+      return;
+    }
+    await deleteCollection(collection._id).unwrap();
+    dispatch(pushToast({ title: "Collection deleted", tone: "success" }));
+  };
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <section className="rounded-2xl border border-ink-200 bg-white p-5 shadow-panel dark:border-ink-800 dark:bg-ink-900/70">
@@ -135,7 +158,9 @@ export default function SavedPage() {
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Library</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-normal text-ink-950 dark:text-ink-50">Your knowledge vault.</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">Store, organize, search, and manage saved knowledge. Launch learning when you are ready.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">
+              {user ? "Store, organize, search, and manage saved knowledge. Launch learning when you are ready." : "Preview how Upwrite turns useful reads into a personal learning library."}
+            </p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center sm:min-w-80">
             <Metric label="Saved" value={saved.length} />
@@ -178,7 +203,11 @@ export default function SavedPage() {
           ) : null}
 
           {!isLoading && !filteredSaved.length && ["All", "Articles"].includes(libraryTab) ? (
-            <EmptyState title="Nothing found in this view" description="Save articles or adjust your search and collection filters." action={<Button variant="secondary" onClick={() => navigate("/read")}>Find articles</Button>} />
+            <EmptyState
+              title={user ? "Nothing found in this view" : "Build a library from articles you care about"}
+              description={user ? "Save articles or adjust your search and collection filters." : "Browse freely as a guest. When you save your first article, Upwrite will ask you to sign in."}
+              action={<Button variant="secondary" onClick={() => navigate("/read")}>Find articles</Button>}
+            />
           ) : null}
 
           <div className="space-y-4">
@@ -238,10 +267,7 @@ export default function SavedPage() {
 
             {libraryTab === "Knowledge Collections" ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                {collections.map((collection) => <CollectionCard key={collection._id} collection={collection} onEdit={startEdit} onDelete={async () => {
-                  await deleteCollection(collection._id).unwrap();
-                  dispatch(pushToast({ title: "Collection deleted", tone: "success" }));
-                }} />)}
+                {collections.map((collection) => <CollectionCard key={collection._id} collection={collection} onEdit={startEdit} onDelete={() => void deleteCollectionWithAuth(collection)} />)}
                 {!collections.length ? <EmptyState title="Create your first collection" description="Use collections as knowledge folders for saved articles, notes, highlights, and flashcards." /> : null}
               </div>
             ) : null}
@@ -251,7 +277,7 @@ export default function SavedPage() {
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <Card className="p-4">
             <h2 className="font-semibold text-ink-950 dark:text-ink-50">{editing ? "Edit collection" : "Create collection"}</h2>
-            <p className="mt-1 text-sm text-ink-500">Collections organize knowledge. Learn handles practice.</p>
+            <p className="mt-1 text-sm text-ink-500">{user ? "Collections organize knowledge. Learn handles practice." : "Sign in when you are ready to create personal collections."}</p>
             <form onSubmit={submit} className="mt-4 space-y-3">
               <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Collection name" />
               <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Short description" className="min-h-24" />
@@ -279,13 +305,16 @@ export default function SavedPage() {
           </Card>
 
           <div className="grid gap-3">
-            {collections.slice(0, 4).map((collection) => <CollectionCard key={collection._id} collection={collection} compact onEdit={startEdit} onDelete={async () => {
-              await deleteCollection(collection._id).unwrap();
-              dispatch(pushToast({ title: "Collection deleted", tone: "success" }));
-            }} />)}
+            {collections.slice(0, 4).map((collection) => <CollectionCard key={collection._id} collection={collection} compact onEdit={startEdit} onDelete={() => void deleteCollectionWithAuth(collection)} />)}
           </div>
         </aside>
       </div>
+      <AuthPrompt
+        open={authPrompt.open}
+        message={authPrompt.message}
+        action={authPrompt.action}
+        onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
+      />
     </div>
   );
 }

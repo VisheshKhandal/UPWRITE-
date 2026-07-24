@@ -19,6 +19,7 @@ import type { ImageAsset, PostType } from "../../types/models";
 import { getErrorMessage } from "../../utils/errors";
 import { consumePromotedNote, noteToArticleContent, storePromotedNote } from "../../utils/promoteNoteToArticle";
 import { cn } from "../../utils/cn";
+import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
 type WriteTab = "article" | "post";
 const LEARNING_LOG_WORD_LIMIT = 1000;
@@ -74,6 +75,10 @@ export default function WritePage() {
   } | null>(null);
   const { data: article } = useMyArticleQuery(id ?? "", { skip: !id });
   const currentUser = useAppSelector((state) => state.auth.user);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+    open: false,
+    message: "Continue with Upwrite"
+  });
   const [createArticle, createState] = useCreateArticleMutation();
   const [updateArticle, updateState] = useUpdateArticleMutation();
   const [uploadImage, uploadState] = useUploadImageMutation();
@@ -98,6 +103,10 @@ export default function WritePage() {
   }, [dispatch]);
 
   const onUpload = async (file: File, context: "article_cover" | "post_media" = "article_cover") => {
+    if (!currentUser) {
+      setAuthPrompt({ open: true, message: "Sign in before uploading images.", action: "upload" });
+      throw new Error("Authentication required");
+    }
     const asset = await uploadImage({ file, context }).unwrap();
     return { url: asset.url ?? asset.secureUrl, publicId: asset.publicId, secureUrl: asset.secureUrl };
   };
@@ -112,6 +121,10 @@ export default function WritePage() {
   };
 
   const save = async (input: Parameters<typeof createArticle>[0]) => {
+    if (!currentUser) {
+      setAuthPrompt({ open: true, message: "Sign in before publishing your article.", action: "publish" });
+      return;
+    }
     try {
       const saved = id
         ? await updateArticle({ id, body: input }).unwrap()
@@ -169,6 +182,12 @@ export default function WritePage() {
           }}
         />
       )}
+      <AuthPrompt
+        open={authPrompt.open}
+        message={authPrompt.message}
+        action={authPrompt.action}
+        onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
+      />
     </div>
   );
 }
@@ -190,6 +209,11 @@ const PostWriter = ({
 }) => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const user = useAppSelector((state) => state.auth.user);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+    open: false,
+    message: "Continue with Upwrite"
+  });
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [type, setType] = useState<PostType>("learning");
@@ -218,6 +242,10 @@ const PostWriter = ({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!title.trim() || !body.trim() || bodyWordCount > LEARNING_LOG_WORD_LIMIT) return;
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in before publishing your learning log.", action: "publish" });
+      return;
+    }
 
     try {
       await createPost({
@@ -235,6 +263,10 @@ const PostWriter = ({
   };
 
   const uploadCover = async (file: File) => {
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in before uploading images.", action: "upload" });
+      return;
+    }
     try {
       setCover(await onUpload(file, "post_media"));
       dispatch(pushToast({ title: "Image added", tone: "success" }));
@@ -259,6 +291,10 @@ const PostWriter = ({
 
   const runAiAction = async (item: LearningLogAiAction) => {
     if (aiState.isLoading) return;
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in to build your learning library.", action: "ai" });
+      return;
+    }
     rememberSelection();
     const selected = selectionRef.current;
     const source = selected?.text.trim() ? selected.text : body;
@@ -354,6 +390,7 @@ const PostWriter = ({
   };
 
   return (
+    <>
     <form onSubmit={submit} className={cn("ai-processing-surface learning-log-workspace mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col rounded-xl border border-ink-200/80 bg-white shadow-panel dark:border-ink-800 dark:bg-ink-900", aiState.isLoading && "is-ai-processing")}>
       <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 px-3 py-2 dark:border-ink-800 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -524,5 +561,12 @@ const PostWriter = ({
         </div>
       ) : null}
     </form>
+    <AuthPrompt
+      open={authPrompt.open}
+      message={authPrompt.message}
+      action={authPrompt.action}
+      onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
+    />
+    </>
   );
 };

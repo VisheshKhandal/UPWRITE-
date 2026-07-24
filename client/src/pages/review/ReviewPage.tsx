@@ -11,22 +11,30 @@ import { useFlashcardSetsQuery, useSaveFlashcardSetMutation } from "../../featur
 import { useCollectionsQuery } from "../../features/collections/collectionsApi";
 import { useSavedQuery } from "../../features/saved/savedApi";
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
+import { useAppSelector } from "../../app/hooks";
+import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
 export default function ReviewPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const user = useAppSelector((state) => state.auth.user);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+    open: false,
+    message: "Continue with Upwrite"
+  });
   const [syncingArticle, setSyncingArticle] = useState("");
   const sessionMode = params.get("session");
   const sessionArticle = params.get("article") ?? "";
-  const { data: dueCards = [], isLoading: dueLoading } = useFlashcardsQuery({ due: true });
+  const { data: dueCards = [], isLoading: dueLoading } = useFlashcardsQuery({ due: true }, { skip: !user });
   const { data: articleCards = [], isLoading: articleCardsLoading } = useFlashcardsQuery(
-    sessionMode === "article" && sessionArticle ? { article: sessionArticle } : undefined
+    sessionMode === "article" && sessionArticle ? { article: sessionArticle } : undefined,
+    { skip: !user }
   );
-  const { data: allCards = [], isLoading: cardsLoading } = useFlashcardsQuery();
-  const { data: flashcardSets = [] } = useFlashcardSetsQuery();
-  const { data: collections = [] } = useCollectionsQuery({ limit: 6 });
-  const { data: saved = [] } = useSavedQuery({ limit: 12 });
-  const { data: progress = [] } = useReadingProgressQuery();
+  const { data: allCards = [], isLoading: cardsLoading } = useFlashcardsQuery(undefined, { skip: !user });
+  const { data: flashcardSets = [] } = useFlashcardSetsQuery(undefined, { skip: !user });
+  const { data: collections = [] } = useCollectionsQuery({ limit: 6 }, { skip: !user });
+  const { data: saved = [] } = useSavedQuery({ limit: 12 }, { skip: !user });
+  const { data: progress = [] } = useReadingProgressQuery(undefined, { skip: !user });
   const [updateCard] = useUpdateFlashcardMutation();
   const [saveFlashcardSet] = useSaveFlashcardSetMutation();
   const sessionActive = sessionMode === "due" || sessionMode === "article";
@@ -61,6 +69,10 @@ export default function ReviewPage() {
   }, [articleCards.length, articleCardsLoading, saveFlashcardSet, selectedSet, sessionArticle, sessionMode, syncingArticle]);
 
   const startDueSession = () => {
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in to save your flashcards.", action: "study" });
+      return;
+    }
     const next = new URLSearchParams(params);
     next.set("session", "due");
     next.delete("article");
@@ -68,6 +80,10 @@ export default function ReviewPage() {
   };
 
   const startArticleSession = (articleId: string) => {
+    if (!user) {
+      setAuthPrompt({ open: true, message: "Sign in to save your flashcards.", action: "study" });
+      return;
+    }
     const next = new URLSearchParams(params);
     next.set("session", "article");
     next.set("article", articleId);
@@ -94,7 +110,11 @@ export default function ReviewPage() {
           <FlashcardReview
             cards={sessionCards}
             onExit={exitSession}
-            onRate={(id, patch: ReturnType<typeof nextReview>) => updateCard({ id, ...patch }).unwrap()}
+            onRate={(id, patch: ReturnType<typeof nextReview>) =>
+              user
+                ? updateCard({ id, ...patch }).unwrap()
+                : Promise.resolve(setAuthPrompt({ open: true, message: "Sign in to save your flashcards.", action: "study" }))
+            }
           />
         )}
       </div>
@@ -108,7 +128,9 @@ export default function ReviewPage() {
           <div className="min-w-0">
             <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Learn</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-normal text-ink-950 dark:text-ink-50">Turn saved knowledge into recall.</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">Start today’s practice, resume unfinished reading, or launch learning from your library collections.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">
+              {user ? "Start today's practice, resume unfinished reading, or launch learning from your library collections." : "Explore how Upwrite turns saved articles into review, recall, and learning momentum."}
+            </p>
           </div>
           <div className="grid w-full grid-cols-3 gap-2 text-center sm:min-w-80 lg:w-auto">
             <Metric label="Due" value={dueCards.length} />
@@ -183,7 +205,15 @@ export default function ReviewPage() {
             {dueLoading ? (
               <Card className="h-72 animate-pulse bg-ink-100 dark:bg-ink-900" />
             ) : (
-              <FlashcardReview cards={dueCards} onExit={exitSession} onRate={(id, patch: ReturnType<typeof nextReview>) => updateCard({ id, ...patch }).unwrap()} />
+              <FlashcardReview
+                cards={dueCards}
+                onExit={exitSession}
+                onRate={(id, patch: ReturnType<typeof nextReview>) =>
+                  user
+                    ? updateCard({ id, ...patch }).unwrap()
+                    : Promise.resolve(setAuthPrompt({ open: true, message: "Sign in to save your flashcards.", action: "study" }))
+                }
+              />
             )}
           </section>
 
@@ -260,6 +290,12 @@ export default function ReviewPage() {
           </Card>
         </aside>
       </div>
+      <AuthPrompt
+        open={authPrompt.open}
+        message={authPrompt.message}
+        action={authPrompt.action}
+        onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
+      />
     </div>
   );
 }
