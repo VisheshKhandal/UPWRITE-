@@ -8,11 +8,12 @@ import morgan from "morgan";
 import { env } from "../config/env";
 
 const localOriginRegex = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:(\d+))?$/;
+const allowedOrigins = new Set(env.CLIENT_ORIGINS);
 
 const isAllowedOrigin = (origin: string | undefined) => {
   // No Origin header: same-origin, server-side, or proxied dev requests (e.g. Vite).
   if (!origin) return true;
-  return origin === env.CLIENT_ORIGIN || (env.isDevelopment && localOriginRegex.test(origin));
+  return allowedOrigins.has(origin) || (env.isDevelopment && localOriginRegex.test(origin));
 };
 
 export const applySecurityMiddleware = (app: Express) => {

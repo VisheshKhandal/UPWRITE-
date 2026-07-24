@@ -21,6 +21,7 @@ const envSchema = z.object({
   API_VERSION: z.string().default("v1"),
   MONGO_URI: z.string().min(1, "MONGO_URI is required"),
   CLIENT_ORIGIN: z.string().default("http://localhost:5173"),
+  CLIENT_ORIGINS: z.string().optional(),
   CLIENT_URL: z.string().optional(),
   COOKIE_DOMAIN: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -105,6 +106,13 @@ if (!parsed.success) {
 export const env = {
   ...parsed.data,
   CLIENT_URL: parsed.data.CLIENT_URL ?? parsed.data.CLIENT_ORIGIN,
+  CLIENT_ORIGINS: [
+    ...(parsed.data.CLIENT_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+    parsed.data.CLIENT_ORIGIN
+  ],
   isProduction: parsed.data.NODE_ENV === "production",
   isDevelopment: parsed.data.NODE_ENV === "development"
 };
