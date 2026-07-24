@@ -13,7 +13,9 @@ interface ArticleContext {
 
 interface AiRequest {
   action: AiAction;
-  article: ArticleContext;
+  article?: ArticleContext;
+  articleContent?: string;
+  articleDraft?: string;
   selectedText?: string;
   question?: string;
   targetLanguage?: string;
@@ -41,7 +43,13 @@ const actionPrompts: Record<AiAction, string> = {
   "summarize-selection": "Summarize the selected passage in context of the full article.",
   "simplify-selection": "Simplify the selected passage while preserving its meaning and nuance.",
   "translate-selection": "Translate the selected passage contextually, preserving meaning rather than translating word-for-word.",
-  "learning-mode": "Create concise summary notes followed by useful revision flashcards. Format with headings: Summary Notes and Flashcards."
+  "learning-mode": "Create 5-8 useful revision flashcards. Return only valid JSON in this exact shape: {\"flashcards\":[{\"question\":\"...\",\"answer\":\"...\"}]}. Keep questions specific and answers concise. Do not use Markdown or add summary notes.",
+  "generate-flashcards": "Create 5-8 concise study flashcards grounded only in the source. Return valid JSON with a flashcards array containing question and answer fields.",
+  "generate-notes": "Create concise, structured summary notes grounded only in the source.",
+  "writing-clarity": "Review the draft for clarity. Return improvement suggestions and weak sections only; do not rewrite or generate the article.",
+  "title-suggestions": "Suggest five accurate title options based on the draft. Do not add claims absent from the draft.",
+  "excerpt-suggestions": "Suggest three concise excerpt options based on the draft. Do not invent facts.",
+  "tag-suggestions": "Suggest 5-8 relevant knowledge areas based on the draft. Return concise labels only."
 };
 
 const createCacheKey = (request: AiRequest) =>
@@ -55,6 +63,7 @@ const buildPrompt = (request: AiRequest) => {
   const question = request.question ? `\nReader question:\n${request.question}` : "";
   const targetLanguage = request.targetLanguage ? `\nTarget language: ${request.targetLanguage}` : "";
 
+  const article = request.article ?? { title: request.articleDraft ? "Article draft" : "Article", content: request.articleDraft ?? request.articleContent ?? "" };
   return [
     "You are Upwrite's learning assistant. Help readers understand, retain, and apply knowledge.",
     "Be accurate, concise, warm, and grounded in the provided article. Do not invent facts.",
@@ -62,10 +71,10 @@ const buildPrompt = (request: AiRequest) => {
     question,
     targetLanguage,
     selected,
-    `\nArticle title: ${request.article.title}`,
-    request.article.excerpt ? `Article excerpt: ${request.article.excerpt}` : "",
-    request.article.authorName ? `Author: ${request.article.authorName}` : "",
-    `\nArticle content:\n${request.article.content}`
+    `\nArticle title: ${article.title}`,
+    article.excerpt ? `Article excerpt: ${article.excerpt}` : "",
+    article.authorName ? `Author: ${article.authorName}` : "",
+    `\n${request.articleDraft ? "Article draft" : "Article content"}:\n${article.content}`
   ]
     .filter(Boolean)
     .join("\n");
@@ -153,24 +162,18 @@ const pickImportantSentences = (value: string, limit: number) => {
 };
 
 const buildLocalFallback = (request: AiRequest) => {
-  const source = request.selectedText?.trim() || request.article.content;
+  const article = request.article ?? { title: "Article draft", content: request.articleDraft ?? request.articleContent ?? "" };
+  const source = request.selectedText?.trim() || article.content;
   const important = pickImportantSentences(source, 6);
-  const title = request.article.title;
-  const bullets = important.length ? important : [request.article.excerpt || `This article explains ${title}.`];
+  const title = article.title;
+  const bullets = important.length ? important : [article.excerpt || `This article explains ${title}.`];
 
-  if (request.action === "learning-mode") {
-    const flashcards = bullets.slice(0, 5).map((sentence, index) => {
+  if (request.action === "learning-mode" || request.action === "generate-flashcards") {
+    const flashcards = bullets.slice(0, 5).map((sentence) => {
       const answer = sentence.length > 180 ? `${sentence.slice(0, 177)}...` : sentence;
-      return `**Q${index + 1}. What is one key idea from "${title}"?**\nA: ${answer}`;
+      return { question: `What is one key idea from "${title}"?`, answer };
     });
-
-    return [
-      "## Summary Notes",
-      ...bullets.slice(0, 5).map((sentence) => `- ${sentence}`),
-      "",
-      "## Flashcards",
-      ...flashcards
-    ].join("\n");
+    return JSON.stringify({ flashcards });
   }
 
   if (request.action === "takeaways" || request.action === "insights") {
@@ -235,7 +238,7 @@ const callOpenRouter = async (request: AiRequest) => {
       ],
       temperature: 0.35,
       top_p: 0.9,
-      max_tokens: request.action === "learning-mode" ? 1600 : 900
+      max_tokens: request.action === "learning-mode" || request.action === "generate-flashcards" || request.action === "generate-notes" ? 1600 : 900
     })
   });
 
@@ -265,7 +268,7 @@ const callGemini = async (request: AiRequest) => {
       generationConfig: {
         temperature: 0.35,
         topP: 0.9,
-        maxOutputTokens: request.action === "learning-mode" ? 1600 : 900
+        maxOutputTokens: request.action === "learning-mode" || request.action === "generate-flashcards" || request.action === "generate-notes" ? 1600 : 900
       }
     })
   });

@@ -32,7 +32,7 @@ export default function CollectionsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <section>
-        <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Collections</p>
+        <p className="text-sm font-medium text-ink-500">Knowledge Collections</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-normal">Organize your learning resources.</h1>
       </section>
       <Card className="p-5">

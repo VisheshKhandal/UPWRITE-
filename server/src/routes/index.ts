@@ -17,6 +17,8 @@ import exploreRoutes from "./explore.routes";
 import savedRoutes from "./saved.routes";
 import settingsRoutes from "./settings.routes";
 import aiRoutes from "./ai.routes";
+import contactRoutes from "./contact.routes";
+import { flashcardsRoutes, highlightsRoutes, knowledgeAreasRoutes, notesRoutes, readingProgressRoutes, studyPacksRoutes } from "./learning.routes";
 
 const router = Router();
 
@@ -38,5 +40,12 @@ router.use("/uploads", uploadRoutes);
 router.use("/search", searchRoutes);
 router.use("/explore", exploreRoutes);
 router.use("/ai", aiRoutes);
+router.use("/contact", contactRoutes);
+router.use("/highlights", highlightsRoutes);
+router.use("/notes", notesRoutes);
+router.use("/flashcards", flashcardsRoutes);
+router.use("/study-packs", studyPacksRoutes);
+router.use("/reading-progress", readingProgressRoutes);
+router.use("/knowledge-areas", knowledgeAreasRoutes);
 
 export default router;

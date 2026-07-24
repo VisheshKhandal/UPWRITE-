@@ -23,11 +23,11 @@ export const BrandLogo = ({
           "shrink-0 rounded-xl object-contain shadow-sm",
           size === "sm" && "h-8 w-8",
           size === "md" && "h-10 w-10",
-          size === "lg" && "h-14 w-14"
+          size === "lg" && "h-[3.85rem] w-[3.85rem]"
         )}
       />
       {showName ? (
-        <span className={cn("font-semibold tracking-tight text-ink-950 dark:text-ink-50", size === "lg" ? "text-2xl" : "text-xl")}>
+        <span className={cn("font-semibold tracking-tight text-ink-950 dark:text-ink-50", size === "lg" ? "text-[1.65rem]" : "text-xl")}>
           Upwrite
         </span>
       ) : null}

@@ -85,7 +85,6 @@ export interface OnboardingState {
   goals?: Array<"learn_skills" | "build_personal_brand" | "share_knowledge" | "document_journey" | "grow_audience" | "find_opportunities">;
   learningPreferences?: Array<"short_reads" | "deep_dives" | "project_based" | "community_discussion">;
   writingPreferences?: Array<"quick_posts" | "long_form" | "learning_logs" | "tutorials">;
-  tourCompletedAt?: string;
 }
 
 export type PostType = "learning" | "achievement" | "insight" | "update";

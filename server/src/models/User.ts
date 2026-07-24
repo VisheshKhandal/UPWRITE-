@@ -126,7 +126,13 @@ const userSchema = new Schema(
       lowercase: true,
       trim: true
     },
-    passwordHash: { type: String, required: true, select: false },
+    passwordHash: { type: String, select: false },
+    provider: {
+      type: String,
+      enum: ["local", "google", "github"],
+      default: "local"
+    },
+    providerId: { type: String, trim: true },
     role: {
       type: String,
       enum: Object.values(UserRole),
@@ -162,8 +168,16 @@ const userSchema = new Schema(
   }
 );
 
-userSchema.index({ username: 1 });
-userSchema.index({ email: 1 });
+// Only OAuth identities need uniqueness; local users omit providerId entirely.
+userSchema.index(
+  { provider: 1, providerId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      providerId: { $exists: true, $type: "string", $gt: "" }
+    }
+  }
+);
 userSchema.index({ name: "text", username: "text", bio: "text", skills: "text", interests: "text" });
 
 export type User = InferSchemaType<typeof userSchema>;

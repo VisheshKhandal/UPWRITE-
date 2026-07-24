@@ -6,7 +6,7 @@ const refreshTokenSchema = new Schema(
     tokenHash: { type: String, required: true, unique: true },
     userAgent: String,
     ipAddress: String,
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
     revokedAt: Date,
     replacedByTokenHash: String
   },

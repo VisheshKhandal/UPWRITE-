@@ -25,6 +25,15 @@ interface AuthUser {
   emailVerified: boolean;
 }
 
+type OAuthProvider = "google" | "github";
+
+interface OAuthIdentity {
+  provider: OAuthProvider;
+  providerId: string;
+  name: string;
+  email: string;
+}
+
 const asAuthUser = (user: unknown): AuthUser => {
   const item = user as { _id: unknown; role?: UserRole; emailVerified?: boolean };
   return {
@@ -74,6 +83,32 @@ const recordSecurityEvent = async (
   });
 };
 
+const usernameBaseFromIdentity = (name: string, email: string) => {
+  const source = email.split("@")[0] || name;
+  return (
+    source
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 24) || "upwriter"
+  );
+};
+
+const makeUniqueUsername = async (name: string, email: string) => {
+  const base = usernameBaseFromIdentity(name, email);
+  let username = base.length >= 3 ? base : `${base}_user`;
+  let suffix = 0;
+
+  while (await UserModel.exists({ username })) {
+    suffix += 1;
+    const ending = `_${suffix}`;
+    username = `${base.slice(0, 30 - ending.length)}${ending}`;
+  }
+
+  return username;
+};
+
 const issueTokenPair = async (user: AuthUser, context: ClientContext) => {
   const payload = {
     sub: String(user._id),
@@ -111,7 +146,7 @@ export const authService = {
       username: input.username,
       email: input.email,
       passwordHash,
-      onboarding: { required: true, completed: false }
+      onboarding: { required: false, completed: true, completedAt: new Date() }
     });
 
     const tokens = await issueTokenPair(asAuthUser(user), context);
@@ -130,6 +165,11 @@ export const authService = {
     if (!user) {
       await recordSecurityEvent(SecurityEventType.LOGIN_FAILED, context, undefined, identifier);
       throw new AppError("Invalid credentials", 401);
+    }
+
+    if (!user.passwordHash) {
+      await recordSecurityEvent(SecurityEventType.LOGIN_FAILED, context, user._id, identifier);
+      throw new AppError("Use a social login to continue with this account", 401);
     }
 
     const valid = await bcrypt.compare(input.password, String(user.passwordHash));
@@ -160,6 +200,39 @@ export const authService = {
     if (!seenDevice) {
       await recordSecurityEvent(SecurityEventType.NEW_DEVICE_LOGIN, context, user._id, identifier);
     }
+
+    return { user: publicUser, ...tokens };
+  },
+
+  async loginWithOAuth(identity: OAuthIdentity, context: ClientContext) {
+    const email = identity.email.toLowerCase();
+    let user = await UserModel.findOne({
+      $or: [{ provider: identity.provider, providerId: identity.providerId }, { email }],
+      deletedAt: { $exists: false }
+    });
+
+    if (!user) {
+      user = await UserModel.create({
+        name: identity.name,
+        username: await makeUniqueUsername(identity.name, email),
+        email,
+        provider: identity.provider,
+        providerId: identity.providerId,
+        emailVerified: true,
+        onboarding: { required: false, completed: true, completedAt: new Date() }
+      });
+    } else if (!user.providerId || user.provider !== identity.provider) {
+      user.provider = identity.provider;
+      user.providerId = identity.providerId;
+      user.emailVerified = true;
+    }
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const tokens = await issueTokenPair(asAuthUser(user), context);
+    const publicUser = await UserModel.findById(user._id).select(publicUserFields).lean();
+    await recordSecurityEvent(SecurityEventType.LOGIN_SUCCESS, context, user._id, email, { provider: identity.provider });
 
     return { user: publicUser, ...tokens };
   },

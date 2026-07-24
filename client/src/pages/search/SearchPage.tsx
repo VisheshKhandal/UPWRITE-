@@ -1,280 +1,377 @@
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Clock, FileText, Search, TrendingUp, Users } from "lucide-react";
+import { ArrowDownAZ, Clock, FileText, Flame, Heart, Search, Sparkles, X } from "lucide-react";
 import { ArticleCard } from "../../components/article/ArticleCard";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ErrorState } from "../../components/common/ErrorState";
-import { PostCard } from "../../components/feed/PostCard";
-import { FollowButton } from "../../components/profile/FollowButton";
-import { Avatar } from "../../components/ui/Avatar";
 import { Badge } from "../../components/ui/Badge";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Tabs } from "../../components/ui/Tabs";
-import {
-  useFeaturedCreatorsQuery,
-  usePeopleYouMayKnowQuery,
-  useTopArticlesQuery,
-  useTrendingTagsQuery
-} from "../../features/explore/exploreApi";
-import { useSearchQuery, type SearchType } from "../../features/search/searchApi";
-import { useRecentSearches } from "../../hooks/useRecentSearches";
-import { getImageSrc } from "../../utils/image";
+import { useTopArticlesQuery } from "../../features/explore/exploreApi";
+import { useArticlesQuery } from "../../features/articles/articlesApi";
+import { useSearchQuery } from "../../features/search/searchApi";
+import { cn } from "../../utils/cn";
+import type { Article } from "../../types/models";
 
-const searchTabs: { value: SearchType; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "users", label: "Users" },
-  { value: "articles", label: "Articles" },
-  { value: "posts", label: "Posts" },
-  { value: "tags", label: "Tags" }
-];
+type ReadFilter = "newest" | "popular" | "liked";
+
+const filterLabels: Record<ReadFilter, string> = {
+  newest: "Newest",
+  popular: "Popular",
+  liked: "Most liked"
+};
+
+const normalize = (value: string) => value.trim().toLowerCase();
+
+const resultLabel = (count: number, query: string, tag: string) => {
+  const articleText = `${count} ${count === 1 ? "article" : "articles"}`;
+  if (query.length >= 2 && tag) return `Showing ${articleText} for "${query}" in ${tag}`;
+  if (query.length >= 2) return `Showing ${articleText} for "${query}"`;
+  if (tag) return `Showing ${articleText} for ${tag}`;
+  return `${articleText} available`;
+};
 
 export default function SearchPage() {
   const [params, setParams] = useSearchParams();
-  const initialQ = params.get("q") ?? "";
-  const initialType = (params.get("type") as SearchType | null) ?? "all";
-  const [q, setQ] = useState(initialQ);
-  const [debouncedQ, setDebouncedQ] = useState(initialQ);
-  const [type, setType] = useState<SearchType>(initialType);
-  const [focused, setFocused] = useState(false);
-  const { recent, addSearch, clearSearches } = useRecentSearches();
+  const query = params.get("q")?.trim() ?? "";
+  const activeTag = params.get("tag")?.trim() ?? "";
+  const [filter, setFilter] = useState<ReadFilter>("newest");
+  const [searchValue, setSearchValue] = useState(query);
+  const [highlightFirst, setHighlightFirst] = useState(false);
+  const [feedSettling, setFeedSettling] = useState(false);
+  const [guideNonce, setGuideNonce] = useState(0);
+  const resultsRef = useRef<HTMLElement | null>(null);
+  const didMountRef = useRef(false);
+  const interactionRef = useRef(false);
 
-  const { data: trendingTags = [] } = useTrendingTagsQuery();
+  const articlesQuery = useArticlesQuery({ limit: 48 });
   const topArticlesQuery = useTopArticlesQuery();
-  const topArticles = topArticlesQuery.data ?? [];
-  const { data: featuredCreators = [] } = useFeaturedCreatorsQuery();
-  const { data: people = [] } = usePeopleYouMayKnowQuery();
-  const searching = debouncedQ.trim().length >= 2;
-  const { data, isFetching } = useSearchQuery(
-    { q: debouncedQ.trim(), type, limit: 12 },
-    { skip: !searching }
-  );
+  const searchQuery = useSearchQuery({ q: query, type: "articles", limit: 48 }, { skip: query.length < 2 });
+
+  const allArticles = articlesQuery.data ?? [];
+  const searchArticles = searchQuery.data?.articles ?? [];
+  const sourceArticles = query.length >= 2 ? searchArticles : allArticles;
+  const hasEngagementData = allArticles.some((article) => (article.stats?.viewsCount ?? 0) > 0 || (article.stats?.likesCount ?? 0) > 0);
+  const hasLikeData = allArticles.some((article) => (article.stats?.likesCount ?? 0) > 0);
+
+  const readTabs = useMemo(() => {
+    const tabs: { value: ReadFilter; label: React.ReactNode }[] = [
+      { value: "newest", label: <span className="inline-flex items-center gap-1.5"><ArrowDownAZ className="h-3.5 w-3.5" />Newest</span> }
+    ];
+    if (hasEngagementData) tabs.push({ value: "popular", label: <span className="inline-flex items-center gap-1.5"><Flame className="h-3.5 w-3.5" />Popular</span> });
+    if (hasLikeData) tabs.push({ value: "liked", label: <span className="inline-flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" />Most liked</span> });
+    return tabs;
+  }, [hasEngagementData, hasLikeData]);
+
+  const knowledgeAreas = useMemo(() => {
+    const counts = new Map<string, { name: string; count: number }>();
+    allArticles.forEach((article) => {
+      article.tags?.forEach((tag) => {
+        const key = normalize(tag);
+        if (!key) return;
+        const current = counts.get(key);
+        counts.set(key, { name: current?.name ?? tag, count: (current?.count ?? 0) + 1 });
+      });
+    });
+    return [...counts.entries()]
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 12);
+  }, [allArticles]);
+
+  const popularReads = useMemo(() => {
+    const seen = new Set<string>();
+    return (topArticlesQuery.data ?? [])
+      .filter((article) => {
+        const score = (article.stats?.viewsCount ?? 0) + (article.stats?.likesCount ?? 0) + (article.stats?.bookmarksCount ?? 0);
+        if (seen.has(article._id) || score <= 0) return false;
+        seen.add(article._id);
+        return true;
+      })
+      .slice(0, 4);
+  }, [topArticlesQuery.data]);
+
+  const filteredArticles = useMemo(() => {
+    const seen = new Set<string>();
+    const selectedTag = normalize(activeTag);
+    const deduped = sourceArticles.filter((article) => {
+      if (seen.has(article._id)) return false;
+      seen.add(article._id);
+      if (!selectedTag) return true;
+      return (article.tags ?? []).some((tag) => normalize(tag) === selectedTag);
+    });
+
+    return [...deduped].sort((a, b) => {
+      if (filter === "popular") {
+        const aScore = (a.stats?.viewsCount ?? 0) + (a.stats?.likesCount ?? 0) * 2 + (a.stats?.bookmarksCount ?? 0) * 3;
+        const bScore = (b.stats?.viewsCount ?? 0) + (b.stats?.likesCount ?? 0) * 2 + (b.stats?.bookmarksCount ?? 0) * 3;
+        return bScore - aScore || newestFirst(a, b);
+      }
+      if (filter === "liked") return (b.stats?.likesCount ?? 0) - (a.stats?.likesCount ?? 0) || newestFirst(a, b);
+      return newestFirst(a, b);
+    }).slice(0, 24);
+  }, [activeTag, filter, sourceArticles]);
+
+  const isLoading = articlesQuery.isLoading || topArticlesQuery.isLoading || searchQuery.isFetching;
+  const error = articlesQuery.error || topArticlesQuery.error || searchQuery.error;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQ(q), 300);
-    return () => window.clearTimeout(timer);
-  }, [q]);
+    setSearchValue(query);
+  }, [query]);
 
   useEffect(() => {
-    const next = new URLSearchParams();
-    if (debouncedQ.trim()) next.set("q", debouncedQ.trim());
-    if (type !== "all") next.set("type", type);
-    setParams(next, { replace: true });
-  }, [debouncedQ, type, setParams]);
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    if (!interactionRef.current) return;
 
-  useEffect(() => {
-    if (debouncedQ.trim().length >= 2) addSearch(debouncedQ.trim());
-  }, [debouncedQ, addSearch]);
+    setFeedSettling(true);
+    const scrollTimer = window.setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 160);
+    const highlightTimer = window.setTimeout(() => {
+      setFeedSettling(false);
+      setHighlightFirst(true);
+    }, 420);
+    const clearTimer = window.setTimeout(() => {
+      setHighlightFirst(false);
+      interactionRef.current = false;
+    }, 1650);
 
-  const hasResults = useMemo(
-    () => !!(data?.users?.length || data?.articles?.length || data?.posts?.length || data?.tags?.length),
-    [data]
-  );
-  const exploreArticleCardClassName =
-    "max-w-full min-w-0 md:max-w-none [&_*]:min-w-0 [&_h2]:break-words [&_img]:max-w-full [&_.inline-flex]:max-w-full";
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(highlightTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [activeTag, filter, guideNonce, query]);
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const next = new URLSearchParams(params);
+    const value = searchValue.trim();
+    if (value) next.set("q", value);
+    else next.delete("q");
+    interactionRef.current = true;
+    setGuideNonce((count) => count + 1);
+    setParams(next);
+  };
+
+  const setTag = (tag: string) => {
+    const next = new URLSearchParams(params);
+    if (tag) next.set("tag", tag);
+    else next.delete("tag");
+    interactionRef.current = true;
+    setGuideNonce((count) => count + 1);
+    setParams(next);
+  };
+
+  const clearFilters = () => {
+    const next = new URLSearchParams(params);
+    next.delete("q");
+    next.delete("tag");
+    interactionRef.current = true;
+    setGuideNonce((count) => count + 1);
+    setParams(next);
+    setSearchValue("");
+    setFilter("newest");
+  };
+
+  const changeFilter = (nextFilter: ReadFilter) => {
+    interactionRef.current = true;
+    setGuideNonce((count) => count + 1);
+    setFilter(nextFilter);
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 overflow-x-hidden md:overflow-visible">
-      <section className="min-w-0">
-        <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Explore</p>
-        <h1 className="mt-2 break-words text-3xl font-semibold tracking-normal">Discover ideas, creators, and conversations.</h1>
-        <p className="mt-2 text-sm text-ink-500">Trending articles are ranked by recent reads, likes, and creator activity.</p>
-      </section>
+    <div className="mx-auto max-w-6xl space-y-7 overflow-x-hidden md:overflow-visible">
+      <section className="min-w-0 rounded-2xl border border-ink-200 bg-white p-4 shadow-panel dark:border-ink-800 dark:bg-ink-900/70 sm:p-5 lg:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Read</p>
+            <h1 className="mt-2 max-w-3xl break-words text-2xl font-semibold tracking-normal text-ink-950 dark:text-ink-50 sm:text-3xl">
+              Find the next useful thing to read.
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">
+              Search by topic, tag, title, or author. The page adapts to what has actually been published.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center sm:min-w-72">
+            <Metric label="Articles" value={allArticles.length} />
+            <Metric label="Topics" value={knowledgeAreas.length} />
+            <Metric label="Popular" value={popularReads.length} />
+          </div>
+        </div>
 
-      <Card className="relative z-10 max-w-full p-3 shadow-panel sm:p-4 md:sticky md:top-16">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <form onSubmit={submitSearch} className="mt-5 flex min-w-0 flex-col gap-2 sm:flex-row">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
             <Input
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => window.setTimeout(() => setFocused(false), 150)}
-              placeholder="Search React, JWT, system design..."
-              className="pl-9"
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              placeholder="Search system design, AI, career..."
+              className="h-12 rounded-xl pl-10"
+              aria-label="Search articles"
             />
-            {focused && !searching ? (
-              <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl dark:border-ink-800 dark:bg-ink-950">
-                {recent.length ? (
-                  <div className="border-b border-ink-100 p-4 dark:border-ink-900">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-ink-500">Recent Searches</p>
-                      <button type="button" onClick={clearSearches} className="text-xs font-medium text-ink-400 hover:text-ink-600">
-                        Clear
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {recent.map((term) => (
-                        <button
-                          key={term}
-                          type="button"
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => setQ(term)}
-                          className="rounded-full border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm text-ink-700 transition hover:bg-ink-100 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300"
-                        >
-                          {term}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                <div className="p-4">
-                  <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-500">
-                    <TrendingUp className="h-4 w-4" />
-                    Trending Topics
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {(trendingTags.length ? trendingTags.slice(0, 6).map((tag) => tag.name) : ["AI Engineering", "System Design", "Career Growth", "Web Development"]).map((topic) => (
-                      <button
-                        key={topic}
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => setQ(topic)}
-                        className="rounded-full border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm text-ink-700 transition hover:bg-ink-100 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300"
-                      >
-                        {topic}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </div>
-          <div className="max-w-full min-w-0 overflow-hidden md:overflow-x-auto">
-            <Tabs value={type} onChange={setType} items={searchTabs} className="flex w-full flex-wrap md:inline-flex md:w-auto md:flex-nowrap" />
+          <Button type="submit" loading={searchQuery.isFetching} className="h-12 rounded-xl sm:w-28">Search</Button>
+        </form>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-950 dark:text-ink-50">Explore Topics</h2>
+            <p className="mt-1 text-sm text-ink-500">Tap a topic to shape the feed.</p>
           </div>
+          {activeTag ? <Button variant="ghost" size="sm" onClick={() => setTag("")}><X className="h-4 w-4" />Clear topic</Button> : null}
         </div>
-      </Card>
 
-      <div className={`min-w-0 transition-opacity duration-200 ${isFetching ? "opacity-70" : "opacity-100"}`}>
-        {!searching ? (
-          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-            <div className="min-w-0 space-y-5">
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="text-xl font-semibold text-ink-950 dark:text-ink-50">Top articles this week</h2>
-                  <Link to="/search?type=articles" className="text-sm font-medium text-accent-700 dark:text-accent-300">View all</Link>
-                </div>
-                <div className="grid gap-4">
-                  {topArticlesQuery.isLoading
-                    ? [0, 1, 2].map((item) => <Card key={item} className="h-44 animate-pulse bg-ink-100 dark:bg-ink-900" />)
-                    : null}
-                  {topArticlesQuery.error ? <ErrorState error={topArticlesQuery.error} /> : null}
-                  {!topArticlesQuery.isLoading && !topArticlesQuery.error && !topArticles.length ? (
-                    <EmptyState title="No articles yet" description="Published articles will appear here as soon as they are available." />
-                  ) : null}
-                  {topArticles.map((article) => <ArticleCard key={article._id} article={article} className={exploreArticleCardClassName} />)}
-                </div>
-              </section>
-            </div>
-
-            <aside className="min-w-0 space-y-5">
-              <Card className="p-4">
-                <h2 className="font-semibold text-ink-950 dark:text-ink-50">Popular Articles</h2>
-                <div className="mt-4 space-y-3">
-                  {topArticles.slice(0, 4).map((article) => (
-                    <Link
-                      key={article._id}
-                      to={`/articles/${article.author?.username}/${article.slug}`}
-                      className="flex min-w-0 max-w-full items-start gap-3 rounded-lg p-2 transition hover:bg-ink-50 dark:hover:bg-ink-900"
-                    >
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-700 dark:bg-accent-950/40 dark:text-accent-300">
-                        <FileText className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-ink-950 dark:text-ink-50">{article.title}</p>
-                        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-ink-500">
-                          <span className="min-w-0 truncate">{article.author?.name}</span>
-                          <span>·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {article.readingTimeMinutes} min
-                          </span>
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <h2 className="font-semibold text-ink-950 dark:text-ink-50">Trending tags</h2>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {trendingTags.slice(0, 20).map((tag) => (
-                    <Link key={tag._id} to={`/search?type=tags&q=${encodeURIComponent(tag.name)}`}>
-                      <Badge>#{tag.name} · {tag.usageCount}</Badge>
-                    </Link>
-                  ))}
-                </div>
-              </Card>
-
-              <CreatorList title="Popular Authors" creators={featuredCreators} />
-              <CreatorList title="People you may know" creators={people} />
-            </aside>
+        {articlesQuery.isLoading ? (
+          <div className="flex gap-2 overflow-hidden">
+            {[0, 1, 2, 3, 4].map((item) => <Card key={item} className="h-10 w-28 shrink-0 animate-pulse bg-ink-100 dark:bg-ink-900" />)}
+          </div>
+        ) : knowledgeAreas.length ? (
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+            {knowledgeAreas.map((area) => {
+              const active = normalize(activeTag) === area.key;
+              return (
+                <button
+                  key={area.key}
+                  type="button"
+                  onClick={() => setTag(active ? "" : area.name)}
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-2 rounded-full border border-ink-200 bg-white px-3.5 py-2 text-sm font-medium text-ink-700 transition-[border-color,background-color,color,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-500/40 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-accent-800",
+                    active && "border-accent-400 bg-accent-50 text-accent-900 dark:border-accent-700 dark:bg-accent-950/40 dark:text-accent-200"
+                  )}
+                >
+                  <span>{area.name}</span>
+                  <span className="rounded-full bg-ink-100 px-2 py-0.5 text-xs text-ink-500 dark:bg-ink-800">{area.count}</span>
+                </button>
+              );
+            })}
           </div>
         ) : (
-          <div className="space-y-4">
-            {isFetching ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {[0, 1, 2, 3].map((item) => <Card key={item} className="h-36 animate-pulse bg-ink-100 dark:bg-ink-900" />)}
+          <EmptyState title="No knowledge areas yet" description="Tags from published articles will appear here as the library grows." />
+        )}
+      </section>
+
+      {popularReads.length ? (
+        <section className="space-y-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-ink-950 dark:text-ink-50">Worth Reading Now</h2>
+              <p className="mt-1 text-sm text-ink-500">Ranked from real engagement.</p>
+            </div>
+            <Sparkles className="hidden h-5 w-5 text-accent-500 sm:block" />
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {popularReads.map((article) => <CompactArticle key={article._id} article={article} />)}
+          </div>
+        </section>
+      ) : null}
+
+      <section ref={resultsRef} className="scroll-mt-24 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-950 dark:text-ink-50">{query.length >= 2 ? "Matching articles" : "Latest Articles"}</h2>
+            <p className="mt-1 text-sm text-ink-500">{resultLabel(filteredArticles.length, query, activeTag)}</p>
+          </div>
+          <div className="max-w-full overflow-x-auto pb-1">
+            <Tabs value={filter} onChange={changeFilter} items={readTabs} className="flex shrink-0 flex-nowrap self-start sm:self-auto" />
+          </div>
+        </div>
+
+        {(query.length >= 2 || activeTag || filter !== "newest") ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-ink-200 bg-white/70 p-3 text-sm transition-colors dark:border-ink-800 dark:bg-ink-900/70">
+            <span className="inline-flex items-center gap-2 text-ink-500"><Search className="h-4 w-4" />Showing results for</span>
+            {query.length >= 2 ? <Badge>Search: {query}</Badge> : null}
+            {activeTag ? (
+              <button type="button" onClick={() => setTag("")} className="rounded-full focus:outline-none focus:ring-2 focus:ring-accent-500/40">
+                <Badge className="gap-1.5 pr-2">Tag: {activeTag}<X className="h-3 w-3" /></Badge>
+              </button>
+            ) : null}
+            {filter !== "newest" ? <Badge>Sort: {filterLabels[filter]}</Badge> : null}
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto">
+              <X className="h-4 w-4" />
+              Clear
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? <ErrorState error={error} /> : null}
+        {isLoading ? <div className="grid gap-5 lg:grid-cols-2">{[0, 1, 2, 3].map((item) => <Card key={item} className="h-72 animate-pulse bg-ink-100 dark:bg-ink-900" />)}</div> : null}
+
+        <div>
+          <div
+            className={cn(
+              "grid gap-5 transition-all duration-300 ease-out lg:grid-cols-2",
+              feedSettling ? "translate-y-2 opacity-60" : "translate-y-0 opacity-100"
+            )}
+          >
+            {!isLoading && filteredArticles.map((article, index) => (
+              <ArticleCard
+                key={article._id}
+                article={article}
+                className={cn(
+                  "max-w-full min-w-0 [&_*]:min-w-0 [&_h2]:break-words",
+                  index === 0 && highlightFirst && "border-accent-400 shadow-[0_0_0_4px_rgba(52,211,153,0.14),0_18px_42px_rgba(15,23,42,0.16)] dark:border-accent-600 dark:shadow-[0_0_0_4px_rgba(16,185,129,0.16)]"
+                )}
+              />
+            ))}
+          </div>
+        </div>
+
+        {!isLoading && !filteredArticles.length ? (
+          <div className="rounded-xl border border-ink-200 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
+            <EmptyState
+              title="No articles found"
+              description={query.length >= 2 || activeTag ? "Try another topic or clear the active filters." : "Published articles will appear here as writers share more work."}
+            />
+            {(query.length >= 2 || activeTag || filter !== "newest") ? (
+              <div className="mt-4 flex justify-center">
+                <Button variant="secondary" onClick={clearFilters}>Explore all articles</Button>
               </div>
             ) : null}
-
-            {!isFetching && !hasResults ? (
-              <EmptyState title="No results found" description="Try a broader phrase, a creator name, or a shorter topic keyword." />
-            ) : null}
-
-            <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-              {(type === "all" || type === "users") && data?.users?.map((user) => (
-                <Card key={user._id} className="p-4">
-                  <Link to={`/profile/${user.username}`} className="flex items-center gap-3">
-                    <Avatar src={user.avatar?.url} name={user.name} />
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{user.name}</p>
-                      <p className="text-sm text-ink-500">@{user.username}</p>
-                      <p className="mt-1 text-xs text-ink-500">Matched by creator profile and public writing.</p>
-                    </div>
-                  </Link>
-                </Card>
-              ))}
-              {(type === "all" || type === "articles") && data?.articles?.map((article) => <ArticleCard key={article._id} article={article} className={exploreArticleCardClassName} />)}
-              {(type === "all" || type === "posts") && data?.posts?.map((post) => <PostCard key={post._id} post={post} />)}
-              {(type === "all" || type === "tags") && data?.tags?.map((tag) => (
-                <Card key={tag._id} className="p-4">
-                  <Badge>{tag.name}</Badge>
-                  <p className="mt-2 text-sm text-ink-500">{tag.usageCount} uses</p>
-                </Card>
-              ))}
-            </div>
           </div>
-        )}
-      </div>
+        ) : null}
+      </section>
     </div>
   );
 }
 
-const CreatorList = ({ title, creators }: { title: string; creators: Array<{ _id: string; name: string; username: string; avatar?: { url?: string }; bio?: string }> }) => (
-  <Card className="p-4">
-    <div className="flex items-center gap-2">
-      <Users className="h-4 w-4 text-ink-400" />
-      <h2 className="font-semibold text-ink-950 dark:text-ink-50">{title}</h2>
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 dark:border-ink-800 dark:bg-ink-950/60">
+      <p className="text-base font-semibold text-ink-950 dark:text-ink-50">{value}</p>
+      <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink-500">{label}</p>
     </div>
-    <div className="mt-4 space-y-3">
-      {creators.slice(0, 6).map((creator) => (
-        <div key={creator._id} className="flex items-center gap-3 rounded-lg p-2 transition hover:bg-ink-50 dark:hover:bg-ink-900">
-          <Link to={`/profile/${creator.username}`}>
-            <Avatar size="sm" src={getImageSrc(creator.avatar)} name={creator.name} />
-          </Link>
-          <div className="min-w-0 flex-1">
-            <Link to={`/profile/${creator.username}`} className="block truncate text-sm font-medium text-ink-950 hover:underline dark:text-ink-50">
-              {creator.name}
-            </Link>
-            <p className="truncate text-xs text-ink-500">@{creator.username}</p>
-            <p className="truncate text-xs text-ink-400">{creator.bio ? "Recommended from creator activity" : "Emerging creator to follow"}</p>
-          </div>
-          <FollowButton userId={creator._id} />
+  );
+}
+
+function newestFirst(a: Article, b: Article) {
+  return new Date(b.publishedAt ?? b.createdAt).getTime() - new Date(a.publishedAt ?? a.createdAt).getTime();
+}
+
+function CompactArticle({ article }: { article: Article }) {
+  return (
+    <Link to={`/articles/${article.author?.username}/${article.slug}`} className="group rounded-xl border border-ink-200 bg-white p-4 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 dark:border-ink-800 dark:bg-ink-900 dark:hover:border-accent-800">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-700 dark:bg-accent-950/40 dark:text-accent-300">
+          <FileText className="h-4 w-4" />
         </div>
-      ))}
-    </div>
-  </Card>
-);
+        <div className="min-w-0">
+          <h3 className="line-clamp-2 font-semibold text-ink-950 transition-colors group-hover:text-accent-800 dark:text-ink-50 dark:group-hover:text-accent-300">{article.title}</h3>
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-500">
+            <span>{article.author?.name ?? "Upwrite writer"}</span>
+            <span aria-hidden="true">-</span>
+            <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{article.readingTimeMinutes} min</span>
+            {(article.stats?.likesCount ?? 0) > 0 ? <span>{article.stats?.likesCount} likes</span> : null}
+          </p>
+        </div>
+      </div>
+    </Link>
+  );
+}

@@ -1,9 +1,8 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
-import { Download, KeyRound, Laptop, Lock, PlayCircle, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { Download, KeyRound, Laptop, Lock, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { UploadDropzone } from "../../components/common/UploadDropzone";
-import { ProductTourOverlay } from "../../components/onboarding/ProductTourOverlay";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
@@ -15,7 +14,6 @@ import {
   useDeleteAccountMutation,
   useDisableTwoFactorMutation,
   useEnableTwoFactorMutation,
-  useCompleteProductTourMutation,
   useRegenerateBackupCodesMutation,
   useResetAppearanceMutation,
   useResendVerificationMutation,
@@ -30,6 +28,7 @@ import {
 import { useUpdateProfileMutation } from "../../features/profiles/profilesApi";
 import { pushToast, setTheme } from "../../features/ui/uiSlice";
 import { useUploadImageMutation } from "../../features/uploads/uploadsApi";
+import { baseApi } from "../../services/baseApi";
 import type { AppearanceSettings, PrivacySettings } from "../../types/models";
 import { getErrorMessage } from "../../utils/errors";
 import { formatDate } from "../../utils/formatDate";
@@ -137,7 +136,6 @@ export default function ProfileSettingsPage() {
   const [updateRecovery, recoveryState] = useUpdateRecoveryMutation();
   const [resendVerification, resendState] = useResendVerificationMutation();
   const [deleteAccount, deleteState] = useDeleteAccountMutation();
-  const [completeProductTour] = useCompleteProductTourMutation();
 
   const [form, setForm] = useState({
     name: effectiveUser?.name ?? "",
@@ -156,7 +154,6 @@ export default function ProfileSettingsPage() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState(effectiveUser?.securitySettings?.recoveryEmail ?? "");
   const [deleteForm, setDeleteForm] = useState({ password: "", confirmation: "" });
-  const [replayTour, setReplayTour] = useState(false);
 
   useEffect(() => {
     if (overview?.user) {
@@ -244,6 +241,7 @@ export default function ProfileSettingsPage() {
       await updatePassword(passwordForm).unwrap();
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
       dispatch(logout());
+      dispatch(baseApi.util.resetApiState());
       dispatch(pushToast({ title: "Password updated. Please sign in again.", tone: "success" }));
       navigate("/login");
     } catch (error) {
@@ -329,16 +327,17 @@ export default function ProfileSettingsPage() {
               <div className="space-y-5">
                 <h2 className="text-xl font-semibold text-ink-950 dark:text-ink-50">Account</h2>
                 <div className="grid gap-4">
-                  <SettingRow title="Replay product tour" description="Walk through Feed, Explore, Write, Saved, Notifications, Profile, and Settings again.">
-                    <Button type="button" variant="secondary" onClick={() => setReplayTour(true)}>
-                      <PlayCircle size={16} />
-                      Replay
-                    </Button>
-                  </SettingRow>
                   <SettingRow title="Email" description={effectiveUser.email ?? "Not provided"}>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${effectiveUser.emailVerified ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"}`}>
-                      {effectiveUser.emailVerified ? "Verified" : "Unverified"}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${effectiveUser.emailVerified ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"}`}>
+                        {effectiveUser.emailVerified ? "Verified" : "Unverified"}
+                      </span>
+                      {!effectiveUser.emailVerified ? (
+                        <Button type="button" size="sm" variant="secondary" loading={resendState.isLoading} onClick={() => resendVerification().unwrap().then(() => dispatch(pushToast({ title: "Verification email queued", tone: "success" }))).catch((error) => toastError(error, "Could not resend verification"))}>
+                          Send verification email
+                        </Button>
+                      ) : null}
+                    </div>
                   </SettingRow>
                   <SettingRow title="Username" description={`@${effectiveUser.username}`}><span /></SettingRow>
                   <SettingRow title="Join date" description={effectiveUser.createdAt ? formatDate(effectiveUser.createdAt) : "Unknown"}><span /></SettingRow>
@@ -427,6 +426,7 @@ export default function ProfileSettingsPage() {
                     if (!window.confirm("Log out every device?")) return;
                     await logoutAll().unwrap();
                     dispatch(logout());
+                    dispatch(baseApi.util.resetApiState());
                     navigate("/login");
                   }}>Log out all devices</Button>
                 </div>
@@ -532,6 +532,7 @@ export default function ProfileSettingsPage() {
                     try {
                       await deleteAccount(deleteForm).unwrap();
                       dispatch(logout());
+                      dispatch(baseApi.util.resetApiState());
                       navigate("/login");
                     } catch (error) {
                       toastError(error, "Could not delete account");
@@ -553,30 +554,16 @@ export default function ProfileSettingsPage() {
                 <div className="flex flex-wrap gap-2">{previewData.skills.map((skill) => <span key={skill} className="rounded-full bg-ink-100 px-3 py-1 text-xs font-medium text-ink-700 dark:bg-ink-800 dark:text-ink-200">{skill}</span>)}</div>
               </div>
             </Card>
-          ) : (
+          ) : activeSection === "security" ? (
             <Card className="space-y-4 rounded-lg border border-ink-200 bg-ink-50 p-6 dark:border-ink-800 dark:bg-ink-950/70">
               <h2 className="text-xl font-semibold text-ink-950 dark:text-ink-50">Protection summary</h2>
               <p className="text-sm text-ink-600 dark:text-ink-400">2FA: {effectiveUser.securitySettings?.twoFactorEnabled ? "Enabled" : "Disabled"}</p>
               <p className="text-sm text-ink-600 dark:text-ink-400">Sessions: {overview?.sessions.length ?? 0}</p>
               <p className="text-sm text-ink-600 dark:text-ink-400">Monitoring: {overview?.monitoring.multipleFailedAttempts ? "Recent failed-attempt alert" : "No recent alerts"}</p>
             </Card>
-          )}
+          ) : null}
         </div>
       </div>
-      <ProductTourOverlay
-        open={replayTour}
-        onClose={async (completed) => {
-          setReplayTour(false);
-          if (!completed) return;
-          try {
-            const updated = await completeProductTour().unwrap();
-            saveUser(updated);
-            dispatch(pushToast({ title: "Product tour replayed", tone: "success" }));
-          } catch (error) {
-            toastError(error, "Could not update tour status");
-          }
-        }}
-      />
     </div>
   );
 }

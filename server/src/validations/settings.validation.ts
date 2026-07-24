@@ -87,8 +87,7 @@ export const onboardingSchema = z.object({
         .min(1)
         .max(6),
       learningPreferences: z.array(z.enum(["short_reads", "deep_dives", "project_based", "community_discussion"])).min(1).max(4),
-      writingPreferences: z.array(z.enum(["quick_posts", "long_form", "learning_logs", "tutorials"])).min(1).max(4),
-      tourCompleted: z.boolean().optional()
+      writingPreferences: z.array(z.enum(["quick_posts", "long_form", "learning_logs", "tutorials"])).min(1).max(4)
     })
     .strict()
 });

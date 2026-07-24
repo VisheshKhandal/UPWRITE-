@@ -274,7 +274,7 @@ export const settingsService = {
 
   async completeOnboarding(
     userId: string,
-    input: { interests: string[]; identity: string; goals: string[]; learningPreferences: string[]; writingPreferences: string[]; tourCompleted?: boolean }
+    input: { interests: string[]; identity: string; goals: string[]; learningPreferences: string[]; writingPreferences: string[] }
   ) {
     const normalizedInterests = Array.from(new Set(input.interests.map((item) => item.trim().toLowerCase()).filter(Boolean)));
     const now = new Date();
@@ -289,20 +289,9 @@ export const settingsService = {
           "onboarding.identity": input.identity,
           "onboarding.goals": input.goals,
           "onboarding.learningPreferences": input.learningPreferences,
-          "onboarding.writingPreferences": input.writingPreferences,
-          ...(input.tourCompleted ? { "onboarding.tourCompletedAt": now } : {})
+          "onboarding.writingPreferences": input.writingPreferences
         }
       },
-      { new: true, runValidators: true }
-    ).select(publicUserFields);
-    if (!user) throw new AppError("User not found", 404);
-    return user;
-  },
-
-  async markTourComplete(userId: string) {
-    const user = await UserModel.findByIdAndUpdate(
-      userId,
-      { $set: { "onboarding.tourCompletedAt": new Date() } },
       { new: true, runValidators: true }
     ).select(publicUserFields);
     if (!user) throw new AppError("User not found", 404);

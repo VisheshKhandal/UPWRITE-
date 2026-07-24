@@ -157,7 +157,7 @@ export const SearchDiscovery = ({ className }: SearchDiscoveryProps) => {
                 ) : null}
 
                 {results?.posts?.length ? (
-                  <ResultSection title="Posts" icon={FileText}>
+                  <ResultSection title="Learning Logs" icon={FileText}>
                     {results.posts.map((post) => (
                       <button
                         key={post._id}
@@ -176,7 +176,7 @@ export const SearchDiscovery = ({ className }: SearchDiscoveryProps) => {
                 ) : null}
 
                 {results?.tags?.length ? (
-                  <ResultSection title="Tags" icon={Hash}>
+                  <ResultSection title="Knowledge Areas" icon={Hash}>
                     {results.tags.map((tag) => (
                       <button
                         key={tag._id}
@@ -226,7 +226,7 @@ export const SearchDiscovery = ({ className }: SearchDiscoveryProps) => {
                   </div>
                 </DiscoverySection>
 
-                <DiscoverySection title="Trending Topics" icon={TrendingUp}>
+                <DiscoverySection title="Featured Topics" icon={TrendingUp}>
                   <div className="flex flex-wrap gap-2">
                     {trendingTopics.map((topic) => (
                       <SearchChip key={topic} label={topic} onSelect={() => goToSearch(topic)} />

@@ -40,7 +40,7 @@ export const PostCard = ({
   };
 
   return (
-    <Card className="border-l-2 border-l-accent-400 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-xl dark:border-l-accent-600 dark:hover:border-accent-800 sm:p-5">
+    <Card className="border-l-2 border-l-accent-400 p-4 transition-colors duration-200 hover:border-accent-300 dark:border-l-accent-600 dark:hover:border-accent-800 sm:p-5">
       <div className="flex items-start gap-3">
         <Link to={`/profile/${post.author?.username}`} className="shrink-0">
           <Avatar size="sm" src={getImageSrc(post.author?.avatar)} name={post.author?.name} />

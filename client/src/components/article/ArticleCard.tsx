@@ -9,6 +9,7 @@ import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
+import { SafeImage } from "../ui/SafeImage";
 import type { ReactNode } from "react";
 import { SaveToCollectionButton } from "../saved/SaveToCollectionButton";
 import { cn } from "../../utils/cn";
@@ -43,22 +44,15 @@ export const ArticleCard = ({
   };
 
   return (
-    <Card className={cn("group overflow-hidden border-ink-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-xl dark:border-ink-800 dark:hover:border-accent-800", className)}>
+    <Card className={cn("group overflow-hidden border-ink-200 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-soft dark:border-ink-800 dark:hover:border-accent-800", className)}>
       <Link to={articleUrl} className="block">
-        {getImageSrc(article.coverImage) ? (
-          <img
-            src={getImageSrc(article.coverImage)}
-            alt={article.title}
-            loading="lazy"
-            className="h-64 w-full object-cover sm:h-72"
-          />
-        ) : (
-          <div className="flex h-48 w-full items-end bg-gradient-to-br from-ink-100 to-ink-200 p-5 dark:from-ink-900 dark:to-ink-800 sm:h-56">
-            <span className="rounded-full border border-accent-200 bg-accent-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-accent-800 dark:border-accent-900 dark:bg-accent-950/50 dark:text-accent-300">
-              Article
-            </span>
-          </div>
-        )}
+        <SafeImage
+          src={getImageSrc(article.coverImage)}
+          alt={article.title}
+          loading="lazy"
+          className="aspect-[16/7] h-auto min-h-44 w-full object-cover transition-transform duration-300 group-hover:scale-[1.015] sm:min-h-56"
+          fallbackLabel="Article"
+        />
       </Link>
 
       <div className="space-y-4 p-5 sm:p-6">
@@ -66,19 +60,19 @@ export const ArticleCard = ({
           <Badge className="border-accent-200 bg-accent-50 font-semibold uppercase tracking-wider text-accent-800 dark:border-accent-900 dark:bg-accent-950/50 dark:text-accent-300">
             Article
           </Badge>
-          <span className="inline-flex items-center gap-1.5 text-sm text-ink-500">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-ink-500" data-pref="reading-time">
             <Clock className="h-4 w-4" />
             {article.readingTimeMinutes} min read
           </span>
         </div>
 
         <Link to={articleUrl}>
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-ink-950 transition hover:text-accent-800 dark:text-ink-50 dark:hover:text-accent-300 sm:text-[1.75rem]">
+          <h2 className="text-xl font-semibold leading-tight tracking-tight text-ink-950 transition hover:text-accent-800 dark:text-ink-50 dark:hover:text-accent-300 sm:text-2xl">
             {article.title}
           </h2>
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 border-b border-ink-200 pb-4 dark:border-ink-800">
           <Link to={`/profile/${article.author?.username}`}>
             <Avatar size="sm" src={getImageSrc(article.author?.avatar)} name={article.author?.name} />
           </Link>
@@ -93,7 +87,7 @@ export const ArticleCard = ({
         </div>
 
         {article.excerpt ? (
-          <p className="line-clamp-3 text-[0.95rem] leading-7 text-ink-600 dark:text-ink-400">{article.excerpt}</p>
+          <p className="line-clamp-2 text-[0.95rem] leading-7 text-ink-600 dark:text-ink-400">{article.excerpt}</p>
         ) : null}
 
         {article.tags?.length ? (
@@ -104,12 +98,12 @@ export const ArticleCard = ({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-200 pt-4 dark:border-ink-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <span className="text-sm text-ink-500" data-pref="like-counts">
             {likesCount} {likesCount === 1 ? "like" : "likes"}
           </span>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" disabled={liking} onClick={onLike} className={liked ? "text-red-600 dark:text-red-300" : undefined}>
+            <Button variant="ghost" size="sm" disabled={liking} onClick={onLike} aria-pressed={liked} className={liked ? "text-red-600 dark:text-red-300" : undefined}>
               <Heart className={`h-4 w-4 transition-transform duration-200 ${liked ? "scale-110 fill-current" : ""}`} />
               {liked ? "Liked" : "Like"}
             </Button>

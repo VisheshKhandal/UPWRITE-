@@ -40,9 +40,15 @@ export const applySecurityMiddleware = (app: Express) => {
   app.use(
     rateLimit({
       windowMs: env.RATE_LIMIT_WINDOW_MS,
-      max: env.RATE_LIMIT_MAX,
+      max: env.isDevelopment ? Math.max(env.RATE_LIMIT_MAX, 2000) : env.RATE_LIMIT_MAX,
       standardHeaders: true,
-      legacyHeaders: false
+      legacyHeaders: false,
+      message: {
+        success: false,
+        message: env.isDevelopment
+          ? "Too many requests. This usually means a client-side request loop is running."
+          : "Too many requests. Please slow down and try again."
+      }
     })
   );
 };

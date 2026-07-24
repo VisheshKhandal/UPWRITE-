@@ -11,13 +11,11 @@ export const authApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     register: builder.mutation<AuthResult, { name: string; username: string; email: string; password: string }>({
       query: (body) => ({ url: "/auth/register", method: "POST", body }),
-      transformResponse: (response: ApiResponse<AuthResult>) => unwrapResponse(response),
-      invalidatesTags: ["Auth"]
+      transformResponse: (response: ApiResponse<AuthResult>) => unwrapResponse(response)
     }),
     login: builder.mutation<AuthResult, { emailOrUsername: string; password: string }>({
       query: (body) => ({ url: "/auth/login", method: "POST", body }),
-      transformResponse: (response: ApiResponse<AuthResult>) => unwrapResponse(response),
-      invalidatesTags: ["Auth"]
+      transformResponse: (response: ApiResponse<AuthResult>) => unwrapResponse(response)
     }),
     refresh: builder.mutation<{ accessToken: string }, void>({
       query: () => ({ url: "/auth/refresh", method: "POST" }),

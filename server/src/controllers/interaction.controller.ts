@@ -20,6 +20,11 @@ export const interactionController = {
     return sendSuccess(res, result.items, "Comments", 200, result.meta);
   }),
 
+  listCreatorComments: asyncHandler(async (req, res) => {
+    const result = await interactionService.listCreatorComments(req, req.user!.id);
+    return sendSuccess(res, result.items, "Creator comments", 200, result.meta);
+  }),
+
   deleteComment: asyncHandler(async (req, res) => {
     await interactionService.deleteComment(routeParam(req, "id"), req.user!.id);
     return sendSuccess(res, null, "Comment deleted");

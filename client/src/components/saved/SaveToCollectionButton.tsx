@@ -62,7 +62,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
         className={saved ? "text-accent-700 dark:text-accent-300" : undefined}
       >
         <Bookmark className={`h-4 w-4 transition-transform duration-200 ${saved ? "scale-110 fill-current" : ""}`} />
-        {compact ? null : saved ? "Saved" : "Save"}
+        {compact ? null : saved ? "In Library" : "Save"}
       </Button>
 
       {open ? (
@@ -71,7 +71,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-ink-950 dark:text-ink-50">Save to</h2>
-                <p className="mt-1 text-sm text-ink-500">Choose a collection or keep it in All Saved.</p>
+                <p className="mt-1 text-sm text-ink-500">Choose a knowledge collection or keep it in your Library.</p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
                 <X className="h-4 w-4" />
@@ -84,7 +84,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
                 onClick={() => save()}
                 className="flex min-h-11 items-center justify-between rounded-lg border border-ink-200 px-3 text-left text-sm transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-900"
               >
-                <span className="font-medium">All Saved</span>
+                <span className="font-medium">Library</span>
                 <Bookmark className="h-4 w-4 text-ink-400" />
               </button>
               {collections.map((collection) => (

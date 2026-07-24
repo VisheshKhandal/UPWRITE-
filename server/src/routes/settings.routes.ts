@@ -32,7 +32,6 @@ router.post("/2fa/disable", validateRequest(passwordConfirmationSchema), setting
 router.post("/2fa/backup-codes", validateRequest(passwordConfirmationSchema), settingsController.regenerateBackupCodes);
 router.patch("/recovery", validateRequest(recoverySettingsSchema), settingsController.updateRecovery);
 router.post("/onboarding", validateRequest(onboardingSchema), settingsController.completeOnboarding);
-router.post("/onboarding/tour", settingsController.completeTour);
 router.post("/verification/resend", settingsController.resendVerification);
 router.get("/export", validateRequest(exportQuerySchema), settingsController.exportData);
 router.delete("/account", validateRequest(accountDeletionSchema), settingsController.deleteAccount);

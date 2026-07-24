@@ -108,17 +108,11 @@ export const settingsApi = baseApi.injectEndpoints({
         goals: NonNullable<User["onboarding"]>["goals"];
         learningPreferences: NonNullable<User["onboarding"]>["learningPreferences"];
         writingPreferences: NonNullable<User["onboarding"]>["writingPreferences"];
-        tourCompleted?: boolean;
       }
     >({
       query: (body) => ({ url: "/settings/onboarding", method: "POST", body }),
       transformResponse: (response: ApiResponse<User>) => unwrapResponse(response),
       invalidatesTags: ["Settings", "Auth", "User", "Feed", "Explore"]
-    }),
-    completeProductTour: builder.mutation<User, void>({
-      query: () => ({ url: "/settings/onboarding/tour", method: "POST" }),
-      transformResponse: (response: ApiResponse<User>) => unwrapResponse(response),
-      invalidatesTags: ["Settings", "Auth", "User"]
     }),
     resendVerification: builder.mutation<null, void>({
       query: () => ({ url: "/settings/verification/resend", method: "POST" }),
@@ -146,7 +140,6 @@ export const {
   useRegenerateBackupCodesMutation,
   useUpdateRecoveryMutation,
   useCompleteOnboardingMutation,
-  useCompleteProductTourMutation,
   useResendVerificationMutation,
   useDeleteAccountMutation
 } = settingsApi;

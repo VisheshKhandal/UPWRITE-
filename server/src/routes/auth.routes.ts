@@ -13,6 +13,10 @@ const router = Router();
 
 router.post("/register", validateRequest(registerSchema), authController.register);
 router.post("/login", validateRequest(loginSchema), authController.login);
+router.get("/google", authController.googleStart);
+router.get("/google/callback", authController.googleCallback);
+router.get("/github", authController.githubStart);
+router.get("/github/callback", authController.githubCallback);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authController.logout);
 router.post("/logout-all", requireAuth, authController.logoutAll);

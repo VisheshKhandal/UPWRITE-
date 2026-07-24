@@ -77,11 +77,6 @@ export const settingsController = {
     return sendSuccess(res, user, "Onboarding completed");
   }),
 
-  completeTour: asyncHandler(async (req, res) => {
-    const user = await settingsService.markTourComplete(req.user!.id);
-    return sendSuccess(res, user, "Product tour completed");
-  }),
-
   resendVerification: asyncHandler(async (req, res) => {
     await settingsService.resendVerification(req.user!.id, clientContext(req));
     return sendSuccess(res, null, "Verification email queued");

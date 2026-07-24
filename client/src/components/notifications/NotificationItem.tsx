@@ -45,7 +45,7 @@ export const NotificationItem = ({ notification, onRead }: { notification: Notif
   );
 
   return (
-    <Card className={cn("p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-lg dark:hover:border-accent-800", unread && "border-accent-200 bg-accent-50/40 dark:border-accent-900 dark:bg-accent-950/10")}>
+    <Card className={cn("p-4 transition-colors duration-200 hover:border-accent-300 dark:hover:border-accent-800", unread && "border-accent-200 bg-accent-50/40 dark:border-accent-900 dark:bg-accent-950/10")}>
       <Link to={getHref(notification)} onClick={onRead} className="block">
         {content}
       </Link>

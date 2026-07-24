@@ -1,38 +1,58 @@
-import { Bell, Bookmark, Home, PenLine, Search } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { BookOpen, Bookmark, CalendarDays, Layers3, PenLine } from "lucide-react";
+import { useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "../../utils/cn";
 
 export const MobileNav = () => {
+  const { pathname } = useLocation();
+  const [pressedItem, setPressedItem] = useState<string | null>(null);
   const items = [
-    { to: "/", label: "Home", icon: Home },
-    { to: "/search", label: "Explore", icon: Search },
-    { to: "/write", label: "Write", icon: PenLine },
-    { to: "/saved", label: "Bookmarks", icon: Bookmark },
-    { to: "/notifications", label: "Notifications", icon: Bell },
+    { to: "/", label: "Today", icon: CalendarDays },
+    { to: "/read", label: "Read", icon: BookOpen },
+    { to: "/library", label: "Library", icon: Bookmark },
+    { to: "/learn", label: "Learn", icon: Layers3 },
+    { to: "/write", label: "Write", icon: PenLine }
   ];
+  const activeIndex = Math.max(0, items.findIndex((item) => item.to === "/" ? pathname === "/" || pathname === "/today" : pathname === item.to || pathname.startsWith(`${item.to}/`)));
+
+  const handleNavigationIntent = () => {
+    document.documentElement.classList.add("is-mobile-nav-transitioning");
+    window.setTimeout(() => document.documentElement.classList.remove("is-mobile-nav-transitioning"), 260);
+  };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-ink-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-ink-800 dark:bg-ink-950/95 lg:hidden">
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          data-tour={item.label.toLowerCase()}
-          className={({ isActive }) =>
-            cn(
-              "group flex h-12 flex-col items-center justify-center gap-1 rounded-lg border border-transparent text-[11px] font-semibold text-ink-500 transition-all duration-200",
-              isActive && "border-accent-200/70 bg-accent-50/80 text-ink-950 ring-1 ring-accent-200/40 dark:border-accent-800/60 dark:bg-ink-900/80 dark:text-ink-50 dark:ring-accent-700/25"
-            )
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <item.icon className={cn("h-4 w-4 transition-colors", isActive ? "text-accent-700 dark:text-accent-300" : "text-ink-400 group-hover:text-ink-700 dark:group-hover:text-ink-200")} />
-              <span className="max-w-full truncate px-0.5">{item.label}</span>
-            </>
-          )}
-        </NavLink>
-      ))}
+    <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-label="Primary mobile navigation">
+      <div className="relative mx-auto grid max-w-md grid-cols-5 rounded-full border border-ink-200/80 bg-white/88 p-1.5 shadow-[0_16px_42px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:border-ink-800/90 dark:bg-ink-950/88 dark:shadow-[0_16px_42px_rgba(0,0,0,0.42)]">
+        <span
+          className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 rounded-full bg-accent-50 shadow-sm transition-transform duration-[240ms] ease-in-out will-change-transform dark:bg-ink-800"
+          style={{
+            width: "calc((100% - 0.75rem) / 5)",
+            transform: `translate3d(${activeIndex * 100}%, 0, 0)`
+          }}
+          aria-hidden="true"
+        />
+        {items.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === "/"}
+            data-tour={item.label.toLowerCase()}
+            onClick={handleNavigationIntent}
+            onPointerDown={() => setPressedItem(item.to)}
+            onPointerLeave={() => setPressedItem(null)}
+            onPointerUp={() => setPressedItem(null)}
+            onPointerCancel={() => setPressedItem(null)}
+            className="group relative isolate flex min-h-[3.125rem] flex-col items-center justify-center gap-0.5 rounded-full px-1 text-[11px] font-semibold text-ink-500 outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-500 dark:text-ink-400"
+          >
+            {({ isActive }) => (
+              <>
+                <item.icon className={cn("h-[1.125rem] w-[1.125rem] transition-[color,opacity,transform] duration-[240ms] ease-in-out", isActive ? "text-accent-700 opacity-100 dark:text-accent-300" : "text-ink-400 opacity-72 group-hover:text-ink-700 group-hover:opacity-90 dark:group-hover:text-ink-200", pressedItem === item.to && "scale-[0.96] opacity-85")} />
+                <span className={cn("max-w-full truncate px-0.5 transition-[color,opacity] duration-[240ms] ease-in-out", isActive ? "text-ink-950 opacity-100 dark:text-ink-50" : "opacity-70 group-hover:opacity-90", pressedItem === item.to && "opacity-85")}>{item.label}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
+      </div>
     </nav>
   );
 };

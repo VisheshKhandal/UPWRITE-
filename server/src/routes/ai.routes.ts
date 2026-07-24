@@ -1,8 +1,9 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { generateAiResponse } from "../controllers/ai.controller";
+import { generateAiResponse, listFlashcardSets, saveFlashcardSet } from "../controllers/ai.controller";
+import { requireAuth } from "../middleware/auth";
 import { validateRequest } from "../middleware/validateRequest";
-import { aiRequestSchema } from "../validations/ai.validation";
+import { aiRequestSchema, flashcardSetSchema } from "../validations/ai.validation";
 
 const router = Router();
 
@@ -15,5 +16,11 @@ const aiLimiter = rateLimit({
 });
 
 router.post("/learning", aiLimiter, validateRequest(aiRequestSchema), generateAiResponse);
+router.post("/study-pack", requireAuth, aiLimiter, validateRequest(aiRequestSchema), generateAiResponse);
+router.post("/highlight", requireAuth, aiLimiter, validateRequest(aiRequestSchema), generateAiResponse);
+router.post("/writing-assist", requireAuth, aiLimiter, validateRequest(aiRequestSchema), generateAiResponse);
+router.post("/flashcards", requireAuth, aiLimiter, validateRequest(aiRequestSchema), generateAiResponse);
+router.post("/flashcards/save", requireAuth, validateRequest(flashcardSetSchema), saveFlashcardSet);
+router.get("/flashcards/saved", requireAuth, listFlashcardSets);
 
 export default router;

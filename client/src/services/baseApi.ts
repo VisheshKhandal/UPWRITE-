@@ -25,8 +25,10 @@ const baseQueryWithRefresh: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQu
   extraOptions
 ) => {
   let result = await rawBaseQuery(args, api, extraOptions);
+  const url = typeof args === "string" ? args : args.url;
+  const isRefreshRequest = url === "/auth/refresh";
 
-  if (result.error?.status === 401) {
+  if (result.error?.status === 401 && !isRefreshRequest) {
     const refreshResult = await rawBaseQuery({ url: "/auth/refresh", method: "POST" }, api, extraOptions);
     const refreshData = refreshResult.data as ApiResponse<{ accessToken: string }> | undefined;
 
@@ -36,6 +38,10 @@ const baseQueryWithRefresh: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQu
     } else {
       api.dispatch(logout());
     }
+  }
+
+  if (result.error?.status === 401 && isRefreshRequest) {
+    api.dispatch(logout());
   }
 
   return result;
@@ -58,7 +64,14 @@ export const baseApi = createApi({
     "Explore",
     "Notification",
     "Search",
-    "Settings"
+    "Settings",
+    "Highlight",
+    "Note",
+    "Flashcard",
+    "StudyPack",
+    "ReadingProgress",
+    "KnowledgeArea",
+    "Contact"
   ],
   endpoints: () => ({})
 });

@@ -37,7 +37,7 @@ export const interactionService = {
         recipient: content.ownerId,
         actor: userId,
         type: NotificationType.LIKE,
-        message: `liked your ${input.contentType}`,
+        message: "liked your article",
         entityType: input.contentType,
         entityId: input.contentId
       })
@@ -74,7 +74,7 @@ export const interactionService = {
         recipient: content.ownerId,
         actor: userId,
         type: input.parentComment ? NotificationType.REPLY : NotificationType.COMMENT,
-        message: input.parentComment ? "replied to a comment" : `commented on your ${input.contentType}`,
+        message: input.parentComment ? "replied to a comment" : "commented on your article",
         entityType: input.contentType,
         entityId: input.contentId
       })
@@ -100,6 +100,45 @@ export const interactionService = {
         .lean(),
       CommentModel.countDocuments(filter)
     ]);
+
+    return { items, meta: paginationMeta(page, limit, total) };
+  },
+
+  async listCreatorComments(req: Request, userId: string) {
+    const { page, limit, skip } = getPagination(req);
+    const articles = await ArticleModel.find({ author: userId, deletedAt: { $exists: false } }).select("_id title slug").lean();
+    const articleIds = articles.map((article) => article._id);
+    const articleMap = new Map(articles.map((article) => [String(article._id), article]));
+
+    const filter = {
+      contentType: ContentType.ARTICLE,
+      contentId: { $in: articleIds },
+      author: { $ne: userId },
+      parentComment: { $exists: false },
+      deletedAt: { $exists: false }
+    };
+
+    const [comments, total] = await Promise.all([
+      CommentModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("author", "name username avatar")
+        .lean(),
+      CommentModel.countDocuments(filter)
+    ]);
+
+    const repliedParentIds = await CommentModel.distinct("parentComment", {
+      author: userId,
+      parentComment: { $in: comments.map((comment) => comment._id) },
+      deletedAt: { $exists: false }
+    });
+    const replied = new Set(repliedParentIds.map(String));
+
+    const items = comments.map((comment) => ({
+      ...comment,
+      article: articleMap.get(String(comment.contentId))
+    })).filter((comment) => !replied.has(String(comment._id)));
 
     return { items, meta: paginationMeta(page, limit, total) };
   },

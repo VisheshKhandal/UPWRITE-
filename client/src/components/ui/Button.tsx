@@ -14,7 +14,8 @@ interface ButtonProps extends Omit<HTMLMotionProps<"button">, "ref" | "children"
 }
 
 const variantClass: Record<ButtonVariant, string> = {
-  primary: "bg-ink-950 text-white hover:bg-ink-800 dark:bg-ink-100 dark:text-ink-950 dark:hover:bg-white",
+  primary:
+    "bg-ink-950 text-white shadow-[0_1px_2px_rgba(15,23,42,0.14)] hover:bg-ink-800 hover:shadow-[0_10px_24px_rgba(15,23,42,0.16)] active:bg-ink-900 dark:bg-ink-100 dark:text-ink-950 dark:hover:bg-white dark:hover:shadow-[0_10px_24px_rgba(255,255,255,0.08)]",
   secondary:
     "border border-ink-200 bg-white text-ink-900 hover:bg-ink-100 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-100 dark:hover:bg-ink-800",
   ghost: "text-ink-700 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-900",
@@ -33,11 +34,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <motion.button
       ref={ref}
       disabled={disabled || loading}
+      whileHover={{ y: disabled || loading ? 0 : -1 }}
       whileTap={{ scale: disabled || loading ? 1 : 0.98 }}
-      whileHover={disabled || loading ? undefined : { scale: 1.01 }}
-      transition={{ type: "spring", stiffness: 400, damping: 28 }}
+      transition={{ duration: 0.14, ease: "easeOut" }}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-[background-color,border-color,box-shadow,transform,opacity] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-ink-950",
         variantClass[variant],
         sizeClass[size],
         className

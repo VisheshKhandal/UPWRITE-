@@ -3,11 +3,13 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAppDispatch } from "../../app/hooks";
 import { setCredentials, setInitialized } from "../../features/auth/authSlice";
 import { useLoginMutation } from "../../features/auth/authApi";
+import { startOAuth } from "../../features/auth/oauth";
 import { pushToast, setTheme } from "../../features/ui/uiSlice";
 import { getErrorMessage } from "../../utils/errors";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
+import { SocialLoginButton } from "../../components/auth/SocialLoginButton";
 
 export default function LoginPage() {
   const dispatch = useAppDispatch();
@@ -33,22 +35,28 @@ export default function LoginPage() {
   };
 
   return (
-    <Card className="mt-8 p-6">
+    <Card className="mt-8 p-6" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut", delay: 0.06 }}>
       <h1 className="text-2xl font-semibold tracking-normal text-ink-950 dark:text-ink-50">Log in</h1>
       <p className="mt-2 text-sm leading-6 text-ink-600 dark:text-ink-400">
-        Continue building your learning identity with a calm workspace for writing and progress.
+        Return to your reading, notes, and published thinking.
       </p>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <Input value={emailOrUsername} onChange={(event) => setEmailOrUsername(event.target.value)} placeholder="Email or username" required />
-        <Input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" required />
-        <Button type="submit" className="w-full" loading={isLoading}>
+        <Input aria-label="Email or username" autoComplete="username" value={emailOrUsername} onChange={(event) => setEmailOrUsername(event.target.value)} placeholder="Email or username" required />
+        <Input aria-label="Password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" required />
+        <Button type="submit" className="w-full" size="lg" loading={isLoading}>
           Log in
         </Button>
       </form>
-      <div className="mt-5 flex items-center justify-between text-sm text-ink-600 dark:text-ink-400">
-        <Link to="/forgot-password" className="hover:text-ink-950 dark:hover:text-ink-100">
-          Forgot password?
-        </Link>
+      <div className="my-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-400">
+        <span className="h-px flex-1 bg-gradient-to-r from-transparent to-ink-200 dark:to-ink-800" />
+        <span>or</span>
+        <span className="h-px flex-1 bg-gradient-to-l from-transparent to-ink-200 dark:to-ink-800" />
+      </div>
+      <div className="grid gap-3">
+        <SocialLoginButton provider="google" onClick={() => startOAuth("google")} />
+        <SocialLoginButton provider="github" onClick={() => startOAuth("github")} />
+      </div>
+      <div className="mt-5 text-sm text-ink-600 dark:text-ink-400">
         <Link to="/register" className="font-medium text-accent-700 dark:text-accent-300">
           Create account
         </Link>

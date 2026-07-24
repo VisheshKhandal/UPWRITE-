@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArticleCard } from "../../components/article/ArticleCard";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ErrorState } from "../../components/common/ErrorState";
+import { LearningLoopStrip } from "../../components/common/LearningLoopStrip";
 import { ProfileHeader } from "../../components/profile/ProfileHeader";
 import { PostCard } from "../../components/feed/PostCard";
 import { FeedSkeleton } from "../../components/ui/Skeleton";
@@ -45,7 +46,7 @@ export default function ProfilePage() {
   const tabs = useMemo(() => {
     const items: Array<{ value: ProfileTab; label: string }> = [
       { value: "articles", label: "Articles" },
-      { value: "posts", label: "Posts" },
+      { value: "posts", label: "Learning Logs" },
       { value: "activity", label: "Activity" }
     ];
 
@@ -93,10 +94,20 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
   const featuredArticle = articles.data?.[0] ?? null;
   const totalReads = articles.data?.reduce((sum, article) => sum + (article.stats?.viewsCount ?? 0), 0) ?? 0;
   const totalLikes = profile.data?.likesReceived ?? articles.data?.reduce((sum, article) => sum + (article.stats?.likesCount ?? 0), 0) ?? 0;
+  const learningTopics = Array.from(new Set([
+    ...(profile.data?.interests ?? []),
+    ...(profile.data?.skills ?? []),
+    ...(articles.data ?? []).flatMap((article) => article.tags ?? []),
+    ...(posts.data ?? []).flatMap((post) => post.tags ?? [])
+  ])).slice(0, 8);
+  const latestLearningItems = [
+    ...(posts.data ?? []).map((post) => ({ id: post._id, label: "Learning log", title: post.title || post.body.slice(0, 80), date: post.createdAt })),
+    ...(articles.data ?? []).map((article) => ({ id: article._id, label: "Article", title: article.title, date: article.publishedAt ?? article.createdAt }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 4);
 
   const stats = [
     { label: "Articles", value: profile.data?.stats?.articlesCount ?? 0 },
-    { label: "Posts", value: profile.data?.stats?.postsCount ?? 0 },
+    { label: "Learning Logs", value: profile.data?.stats?.postsCount ?? 0 },
     { label: "Total reads", value: totalReads },
     { label: "Total likes", value: totalLikes },
     { label: "Followers", value: profile.data?.stats?.followersCount ?? 0 }
@@ -108,6 +119,7 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <ProfileHeader profile={profile.data} isOwnProfile={isOwnProfile} onEdit={() => navigate("/settings/profile")} />
+      <LearningLoopStrip current="Publish" next="Keep learning in public" />
 
       <section className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -132,7 +144,7 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
               <p className="mt-2 text-sm text-ink-600 dark:text-ink-400">The latest published article is highlighted here until explicit pinning is available.</p>
             </div>
             {featuredArticle ? (
-              <div className="rounded-3xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/70">
+              <div className="rounded-xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/70">
                 <h3 className="text-lg font-semibold text-ink-950 dark:text-ink-50">{featuredArticle.title}</h3>
                 <p className="mt-2 text-sm text-ink-600 dark:text-ink-400 line-clamp-3">{featuredArticle.excerpt}</p>
                 <div className="mt-4 flex items-center justify-between gap-3">
@@ -143,7 +155,7 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
                 </div>
               </div>
             ) : (
-              <div className="rounded-3xl border border-dashed border-ink-200 bg-ink-50 p-6 text-center text-sm text-ink-500 dark:border-ink-800 dark:bg-ink-950/70 dark:text-ink-400">
+              <div className="rounded-xl border border-dashed border-ink-200 bg-ink-50 p-6 text-center text-sm text-ink-500 dark:border-ink-800 dark:bg-ink-950/70 dark:text-ink-400">
                 No featured article yet.
                 {isOwnProfile ? (
                   <Button className="mt-4" variant="secondary" size="sm" onClick={() => navigate("/write")}>Write your next feature</Button>
@@ -157,6 +169,41 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
                 <Link to={`/profile/${profile.data.username}`} className="text-sm font-medium text-accent-700 hover:underline dark:text-accent-300">View full profile</Link>
               )}
               <Button variant="ghost" onClick={handleShare}>Share profile</Button>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card className="p-5">
+          <p className="text-sm uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Knowledge timeline</p>
+          <h2 className="mt-2 text-xl font-semibold text-ink-950 dark:text-ink-50">What {isOwnProfile ? "you are" : `${profile.data.name} is`} learning</h2>
+          <div className="mt-5 space-y-3">
+            {latestLearningItems.map((item) => (
+              <div key={`${item.label}-${item.id}`} className="rounded-xl border border-ink-200 p-4 dark:border-ink-800">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-500">{item.label}</p>
+                <p className="mt-1 line-clamp-2 font-medium text-ink-950 dark:text-ink-50">{item.title}</p>
+                <p className="mt-2 text-xs text-ink-500">{formatDate(item.date)}</p>
+              </div>
+            ))}
+            {!latestLearningItems.length ? <p className="text-sm text-ink-500">Published articles and learning logs will form a public knowledge timeline here.</p> : null}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Learning topics</p>
+          <h2 className="mt-2 text-xl font-semibold text-ink-950 dark:text-ink-50">Public knowledge identity</h2>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {learningTopics.map((topic) => <span key={topic} className="rounded-full border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm text-ink-700 dark:border-ink-800 dark:bg-ink-950 dark:text-ink-200">{topic}</span>)}
+            {!learningTopics.length ? <p className="text-sm text-ink-500">Add interests, skills, article tags, or learning log tags to make this profile easier to understand.</p> : null}
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-2 text-center">
+            <div className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+              <p className="text-lg font-semibold text-ink-950 dark:text-ink-50">{profile.data.stats?.postsCount ?? 0}</p>
+              <p className="text-xs text-ink-500">Learning logs</p>
+            </div>
+            <div className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+              <p className="text-lg font-semibold text-ink-950 dark:text-ink-50">{profile.data.stats?.articlesCount ?? 0}</p>
+              <p className="text-xs text-ink-500">Articles</p>
             </div>
           </div>
         </Card>
@@ -245,19 +292,19 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
                 Stay on top of your creator momentum and see how your work is resonating.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Card className="rounded-3xl p-5">
+                <Card className="rounded-xl p-5">
                   <p className="text-sm text-ink-500">Published articles</p>
                   <p className="mt-3 text-3xl font-semibold text-ink-950 dark:text-ink-50">{profile.data.stats?.articlesCount ?? 0}</p>
                 </Card>
-                <Card className="rounded-3xl p-5">
+                <Card className="rounded-xl p-5">
                   <p className="text-sm text-ink-500">Published posts</p>
                   <p className="mt-3 text-3xl font-semibold text-ink-950 dark:text-ink-50">{profile.data.stats?.postsCount ?? 0}</p>
                 </Card>
-                <Card className="rounded-3xl p-5">
+                <Card className="rounded-xl p-5">
                   <p className="text-sm text-ink-500">Likes received</p>
                   <p className="mt-3 text-3xl font-semibold text-ink-950 dark:text-ink-50">{profile.data.likesReceived ?? 0}</p>
                 </Card>
-                <Card className="rounded-3xl p-5">
+                <Card className="rounded-xl p-5">
                   <p className="text-sm text-ink-500">Followers</p>
                   <p className="mt-3 text-3xl font-semibold text-ink-950 dark:text-ink-50">{profile.data.stats?.followersCount ?? 0}</p>
                 </Card>

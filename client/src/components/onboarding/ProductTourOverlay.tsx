@@ -5,11 +5,11 @@ import { Button } from "../ui/Button";
 
 const tourSteps = [
   { target: "feed", title: "Feed", icon: Compass, body: "Your home stream learns from interests, goals, and the creators you follow." },
-  { target: "explore", title: "Explore", icon: Search, body: "Find people, topics, articles, and conversations worth adding to your learning loop." },
+  { target: "read", title: "Read", icon: Search, body: "Find people, knowledge areas, articles, and conversations worth adding to your learning loop." },
   { target: "write", title: "Write", icon: PenLine, body: "Turn notes, wins, questions, and deeper essays into a public body of work." },
-  { target: "saved", title: "Saved", icon: Bookmark, body: "Keep posts and articles close so your best references are never lost." },
+  { target: "library", title: "Library", icon: Bookmark, body: "Keep posts and articles close so your best references are never lost." },
   { target: "notifications", title: "Notifications", icon: Bell, body: "Track replies, follows, likes, and moments where your writing starts a conversation." },
-  { target: "profile", title: "Profile", icon: UserRound, body: "Your profile becomes the timeline of what you learn, build, and teach." },
+  { target: "profile", title: "Studio", icon: UserRound, body: "Your Studio becomes the timeline of what you learn, build, and teach." },
   { target: "settings", title: "Settings", icon: Settings, body: "Tune appearance, privacy, and security so Upwrite feels like your own workspace." }
 ];
 

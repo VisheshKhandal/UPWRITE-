@@ -14,11 +14,13 @@ interface TabsProps<T extends string> {
 }
 
 export const Tabs = <T extends string>({ items, value, onChange, className }: TabsProps<T>) => (
-  <div className={cn("inline-flex rounded-lg border border-ink-200 bg-ink-100 p-1 dark:border-ink-800 dark:bg-ink-900", className)}>
+  <div role="tablist" className={cn("inline-flex rounded-lg border border-ink-200 bg-ink-100 p-1 dark:border-ink-800 dark:bg-ink-900", className)}>
     {items.map((item) => (
       <button
         key={item.value}
         type="button"
+        role="tab"
+        aria-selected={value === item.value}
         onClick={() => onChange(item.value)}
         className={cn(
           "rounded-md px-3 py-1.5 text-sm font-medium text-ink-600 transition-colors dark:text-ink-400",

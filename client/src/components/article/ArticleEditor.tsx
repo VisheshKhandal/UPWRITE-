@@ -1,38 +1,41 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import {
-  Bold,
-  Code,
-  Eye,
-  Heading1,
-  Heading2,
-  Heading3,
-  Image,
-  Italic,
-  Link,
-  List,
-  ListOrdered,
-  Minus,
-  Quote,
-  Save,
-  Send,
-  Underline
+  Check,
+  Sparkles,
+  X
 } from "lucide-react";
-import { Tabs } from "../ui/Tabs";
 import { Input } from "../ui/Input";
 import { Textarea } from "../ui/Textarea";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
-import type { Article, ArticleStatus, ImageAsset } from "../../types/models";
-import { UploadDropzone } from "../common/UploadDropzone";
-import { getImageSrc } from "../../utils/image";
-import { useAppDispatch } from "../../app/hooks";
+import type { Article, ArticleStatus, ImageAsset, User } from "../../types/models";
+import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { pushToast } from "../../features/ui/uiSlice";
+import { useGenerateLearningResponseMutation, type AiAction } from "../../features/ai/aiApi";
+import { EditorSidebar, type EditorSidebarTab } from "../write/EditorSidebar";
+import { ArticlePublishBar } from "../write/ArticlePublishBar";
+import { ResponsiveEditorToolbar, type EditorToolId } from "../write/ResponsiveEditorToolbar";
+import type { WritingAssistantAction } from "../../utils/assistantSuggestions";
+import {
+  deleteDraftSnapshot,
+  loadDraftHistory,
+  saveDraftSnapshot,
+  type DraftSnapshot
+} from "../../utils/draftHistory";
+import { cn } from "../../utils/cn";
+import { getErrorMessage } from "../../utils/errors";
 
 interface ArticleEditorProps {
   initialArticle?: Partial<Article>;
+  promotedDraft?: {
+    title?: string;
+    content?: string;
+    excerpt?: string;
+    tags?: string[];
+    coverImage?: ImageAsset;
+  };
   coverImage?: ImageAsset;
   coverUploading?: boolean;
   onCoverUpload?: (file: File) => void;
@@ -49,29 +52,91 @@ interface ArticleEditorProps {
 
 const draftKey = (id?: string) => `upwrite-article-draft-${id ?? "new"}`;
 
-export const ArticleEditor = ({ initialArticle, coverImage, coverUploading, onCoverUpload, onSave, saving }: ArticleEditorProps) => {
+export const ArticleEditor = ({
+  initialArticle,
+  promotedDraft,
+  coverImage,
+  coverUploading,
+  onCoverUpload,
+  onSave,
+  saving
+}: ArticleEditorProps) => {
   const dispatch = useAppDispatch();
+  const currentUser = useAppSelector((state) => state.auth.user);
   const [mode, setMode] = useState<"write" | "preview">("write");
-  const [title, setTitle] = useState(initialArticle?.title ?? "");
-  const [excerpt, setExcerpt] = useState(initialArticle?.excerpt ?? "");
-  const [content, setContent] = useState(initialArticle?.content ?? "");
-  const [tags, setTags] = useState(initialArticle?.tags?.join(", ") ?? "");
+  const [focusMode, setFocusMode] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<EditorSidebarTab>("assistant");
+  const [title, setTitle] = useState(initialArticle?.title ?? promotedDraft?.title ?? "");
+  const [excerpt, setExcerpt] = useState(initialArticle?.excerpt ?? promotedDraft?.excerpt ?? "");
+  const [content, setContent] = useState(initialArticle?.content ?? promotedDraft?.content ?? "");
+  const [tags, setTags] = useState<string[]>(initialArticle?.tags ?? promotedDraft?.tags ?? []);
+  const [tagInput, setTagInput] = useState("");
+  const [titleError, setTitleError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"saving" | "device" | "drafts" | "offline">("device");
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const [assistantResponse, setAssistantResponse] = useState("");
+  const [lastAssistantAction, setLastAssistantAction] = useState<WritingAssistantAction | null>(null);
+  const [assistantStatus, setAssistantStatus] = useState("");
+  const [assistantError, setAssistantError] = useState("");
+  const [lastAssistantRequest, setLastAssistantRequest] = useState<(() => void) | null>(null);
+  const [assistantPreview, setAssistantPreview] = useState<{
+    title: string;
+    content: string;
+    scope: "selection" | "article";
+    range?: { start: number; end: number };
+  } | null>(null);
+  const [contentUpdating, setContentUpdating] = useState(false);
+  const [draftHistory, setDraftHistory] = useState<DraftSnapshot[]>(() => loadDraftHistory(initialArticle?._id));
+  const [savingVersion, setSavingVersion] = useState(false);
+  const [selectionMenu, setSelectionMenu] = useState<{ text: string; start: number; end: number; x: number; y: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [askAssistant, assistantState] = useGenerateLearningResponseMutation();
   const key = draftKey(initialArticle?._id);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusMode]);
+
+  useEffect(() => {
+    const updateConnection = () => setSaveState(navigator.onLine ? "device" : "offline");
+    window.addEventListener("online", updateConnection);
+    window.addEventListener("offline", updateConnection);
+    return () => {
+      window.removeEventListener("online", updateConnection);
+      window.removeEventListener("offline", updateConnection);
+    };
+  }, []);
 
   useEffect(() => {
     setTitle(initialArticle?.title ?? "");
     setExcerpt(initialArticle?.excerpt ?? "");
     setContent(initialArticle?.content ?? "");
-    setTags(initialArticle?.tags?.join(", ") ?? "");
+    setTags(initialArticle?.tags ?? []);
+    setTagInput("");
+    setDraftHistory(loadDraftHistory(initialArticle?._id));
   }, [initialArticle?._id, initialArticle?.title, initialArticle?.excerpt, initialArticle?.content, initialArticle?.tags]);
 
   useEffect(() => {
+    if (!promotedDraft) return;
+    setTitle(promotedDraft.title ?? "");
+    setExcerpt(promotedDraft.excerpt ?? "");
+    setContent(promotedDraft.content ?? "");
+    setTags(promotedDraft.tags ?? []);
+    setSidebarTab("assistant");
+  }, [promotedDraft]);
+
+  useEffect(() => {
     const raw = localStorage.getItem(key);
-    if (!raw) return;
+    if (!raw || promotedDraft) return;
     try {
-      const draft = JSON.parse(raw) as { title?: string; excerpt?: string; content?: string; tags?: string; updatedAt?: string };
+      const draft = JSON.parse(raw) as { title?: string; excerpt?: string; content?: string; tags?: string[] | string; updatedAt?: string };
       if (!draft.content && !draft.title) return;
       const actionId = `restore-draft-${key}`;
       const restoreDraft = (event: Event) => {
@@ -80,7 +145,7 @@ export const ArticleEditor = ({ initialArticle, coverImage, coverUploading, onCo
         setTitle(draft.title ?? "");
         setExcerpt(draft.excerpt ?? "");
         setContent(draft.content ?? "");
-        setTags(draft.tags ?? "");
+        setTags(Array.isArray(draft.tags) ? draft.tags : (draft.tags ?? "").split(",").map((tag) => tag.trim()).filter(Boolean));
         setLastSavedAt(draft.updatedAt ?? null);
         dispatch(pushToast({ title: "Draft restored", tone: "success" }));
       };
@@ -90,25 +155,32 @@ export const ArticleEditor = ({ initialArticle, coverImage, coverUploading, onCo
     } catch {
       localStorage.removeItem(key);
     }
-  }, [dispatch, key]);
+  }, [dispatch, key, promotedDraft]);
 
   useEffect(() => {
+    setSaveState(navigator.onLine ? "saving" : "offline");
     const timer = window.setTimeout(() => {
       localStorage.setItem(key, JSON.stringify({ title, excerpt, content, tags, updatedAt: new Date().toISOString() }));
       setLastSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setSaveState(navigator.onLine ? "device" : "offline");
+
+      const snapshot = saveDraftSnapshot(initialArticle?._id, { title, excerpt, content, tags, label: "Autosave" });
+      if (snapshot) setDraftHistory(loadDraftHistory(initialArticle?._id));
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [content, excerpt, key, tags, title]);
+  }, [content, excerpt, initialArticle?._id, key, tags, title]);
 
-  const tagList = useMemo(
-    () =>
-      tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-    [tags]
-  );
+  const tagList = useMemo(() => tags.map((tag) => tag.trim()).filter(Boolean), [tags]);
 
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-selection-menu]")) return;
+      setSelectionMenu(null);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
   const plainText = content.replace(/[#*_>`~\-[\]()]/g, " ").trim();
   const wordCount = plainText ? plainText.split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(wordCount / 220));
@@ -131,137 +203,482 @@ export const ArticleEditor = ({ initialArticle, coverImage, coverUploading, onCo
   };
 
   const submit = async (status: ArticleStatus) => {
-    await onSave({
-      title,
-      excerpt,
-      content,
-      tags: tagList,
-      status,
-      coverImage
-    });
-    localStorage.removeItem(key);
+    if (status === "published" && !title.trim()) {
+      setTitleError("Add a title before publishing.");
+      setSidebarTab("details");
+      return;
+    }
+    setTitleError("");
+    setSaveState("saving");
+    try {
+      await onSave({
+        title: title.trim(),
+        excerpt,
+        content,
+        tags: tagList,
+        status,
+        coverImage
+      });
+      setSaveState(status === "draft" ? "drafts" : "device");
+      saveDraftSnapshot(initialArticle?._id, { title, excerpt, content, tags, label: status === "published" ? "Published" : "Saved draft" }, { force: true });
+      localStorage.removeItem(key);
+    } catch {
+      setSaveState(navigator.onLine ? "device" : "offline");
+    }
   };
 
-  const tools = [
-    { icon: Heading1, label: "H1", action: () => insert("# ", "", "Heading") },
-    { icon: Heading2, label: "H2", action: () => insert("## ", "", "Heading") },
-    { icon: Heading3, label: "H3", action: () => insert("### ", "", "Heading") },
-    { icon: Bold, label: "Bold", action: () => insert("**", "**") },
-    { icon: Italic, label: "Italic", action: () => insert("_", "_") },
-    { icon: Underline, label: "Underline", action: () => insert("<u>", "</u>") },
-    { icon: Quote, label: "Blockquote", action: () => insert("> ", "", "Quote") },
-    { icon: List, label: "List", action: () => insert("- ", "", "List item") },
-    { icon: ListOrdered, label: "Ordered list", action: () => insert("1. ", "", "List item") },
-    { icon: Code, label: "Inline code", action: () => insert("`", "`", "code") },
-    { icon: Code, label: "Code block", action: () => insert("```\n", "\n```", "code") },
-    { icon: Link, label: "Link", action: () => insert("[", "](https://)", "link") },
-    { icon: Image, label: "Image", action: () => insert("![", "](https://)", "alt") },
-    { icon: Minus, label: "Divider", action: () => insert("\n\n---\n\n", "", "") }
-  ];
+  const commitTag = (value = tagInput) => {
+    const nextTags = value.split(",").map((tag) => tag.trim()).filter(Boolean);
+    if (!nextTags.length) return;
+    setTags((current) => Array.from(new Set([...current, ...nextTags])));
+    setTagInput("");
+  };
+
+  const removeTag = (tag: string) => {
+    setTags((current) => current.filter((item) => item !== tag));
+  };
+
+  const runAssistant = async (action: WritingAssistantAction) => {
+    if (assistantState.isLoading) return;
+    setLastAssistantAction(action);
+    setAssistantStatus(action === "writing-clarity" ? "Improving..." : action === "title-suggestions" ? "Generating..." : "Thinking...");
+    setAssistantError("");
+    setPanelOpen(false);
+    setLastAssistantRequest(() => () => void runAssistant(action));
+    try {
+      const result = await askAssistant({
+        action,
+        articleDraft: [title, excerpt, content].filter(Boolean).join("\n\n"),
+        allowFallback: true
+      }).unwrap();
+      setAssistantResponse(result.response);
+      setAssistantPreview({ title: "AI-generated version", content: result.response, scope: "article" });
+    } catch (error) {
+      const message = getErrorMessage(error, "AI could not complete that request.");
+      setAssistantError(message);
+      dispatch(pushToast({ title: message, tone: "error" }));
+    } finally {
+      setAssistantStatus("");
+    }
+  };
+
+  const runSelectionAssistant = async (
+    action: AiAction,
+    selectedText: string,
+    question?: string,
+    range?: { start: number; end: number }
+  ) => {
+    if (assistantState.isLoading) return;
+    setSelectionMenu(null);
+    setLastAssistantAction(null);
+    setAssistantStatus(action.includes("summarize") ? "Summarizing..." : action.includes("simplify") ? "Rewriting..." : "Thinking...");
+    setAssistantError("");
+    setPanelOpen(false);
+    const textarea = textareaRef.current;
+    const selectedIndex = selectedText ? content.indexOf(selectedText) : -1;
+    const activeRange = range
+      ?? (textarea && textarea.selectionStart !== textarea.selectionEnd
+        ? { start: textarea.selectionStart, end: textarea.selectionEnd }
+        : selectedIndex >= 0
+          ? { start: selectedIndex, end: selectedIndex + selectedText.length }
+        : undefined);
+    setLastAssistantRequest(() => () => void runSelectionAssistant(action, selectedText, question, activeRange));
+    try {
+      const result = await askAssistant({
+        action,
+        articleDraft: [title, excerpt, content].filter(Boolean).join("\n\n"),
+        selectedText,
+        question,
+        allowFallback: true
+      }).unwrap();
+      setAssistantResponse(result.response);
+      setAssistantPreview({
+        title: "AI-generated version",
+        content: result.response,
+        scope: activeRange ? "selection" : "article",
+        range: activeRange
+      });
+    } catch (error) {
+      const message = getErrorMessage(error, "AI could not complete that request.");
+      setAssistantError(message);
+      dispatch(pushToast({ title: message, tone: "error" }));
+    } finally {
+      setAssistantStatus("");
+    }
+  };
+
+  const replaceContentWithPreview = () => {
+    if (!assistantPreview) return;
+    const nextContent = assistantPreview.content.trim();
+    const textarea = textareaRef.current;
+    const start = assistantPreview.range?.start ?? 0;
+    const end = assistantPreview.range?.end ?? content.length;
+    const safeStart = Math.max(0, Math.min(start, content.length));
+    const safeEnd = Math.max(safeStart, Math.min(end, content.length));
+    setMode("write");
+    setContentUpdating(true);
+
+    if (textarea) {
+      const scrollTop = textarea.scrollTop;
+      textarea.focus();
+      textarea.setSelectionRange(safeStart, safeEnd);
+      textarea.setRangeText(nextContent, safeStart, safeEnd, "end");
+      setContent(textarea.value);
+      window.requestAnimationFrame(() => {
+        textarea.scrollTop = scrollTop;
+        textarea.focus();
+        const cursor = safeStart + nextContent.length;
+        textarea.setSelectionRange(cursor, cursor);
+      });
+    } else {
+      setContent((current) => `${current.slice(0, safeStart)}${nextContent}${current.slice(safeEnd)}`);
+    }
+
+    setAssistantPreview(null);
+    window.setTimeout(() => setContentUpdating(false), 220);
+  };
+
+  const jumpToLine = useCallback(
+    (lineIndex: number) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const lines = content.split("\n");
+      const charOffset = lines.slice(0, lineIndex).join("\n").length + (lineIndex > 0 ? 1 : 0);
+      textarea.focus();
+      textarea.setSelectionRange(charOffset, charOffset);
+      const lineHeight = Number.parseInt(window.getComputedStyle(textarea).lineHeight, 10) || 32;
+      textarea.scrollTop = Math.max(0, lineIndex * lineHeight - textarea.clientHeight / 3);
+      setMode("write");
+    },
+    [content]
+  );
+
+  const handleTextareaMouseUp = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    setSelectionVersion((value) => value + 1);
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.slice(start, end);
+    if (selected.trim().length < 8) {
+      setSelectionMenu(null);
+      return;
+    }
+    const rect = textarea.getBoundingClientRect();
+    setSelectionMenu({
+      text: selected.slice(0, 6000),
+      start,
+      end: Math.min(end, start + 6000),
+      x: Math.min(window.innerWidth - 280, Math.max(16, rect.left + 24)),
+      y: Math.max(76, rect.top + 56)
+    });
+  };
+
+  const handleSaveVersion = () => {
+    setSavingVersion(true);
+    const snapshot = saveDraftSnapshot(
+      initialArticle?._id,
+      { title, excerpt, content, tags, label: "Manual save" },
+      { force: true }
+    );
+    if (snapshot) {
+      setDraftHistory(loadDraftHistory(initialArticle?._id));
+      dispatch(pushToast({ title: "Version saved", tone: "success" }));
+    } else {
+      dispatch(pushToast({ title: "Nothing new to save yet", tone: "info" }));
+    }
+    setSavingVersion(false);
+  };
+
+  const restoreSnapshot = (snapshot: DraftSnapshot) => {
+    setTitle(snapshot.title);
+    setExcerpt(snapshot.excerpt);
+    setContent(snapshot.content);
+    setTags(snapshot.tags);
+    dispatch(pushToast({ title: "Version restored", tone: "success" }));
+  };
+
+  const applyTags = (values: string[]) => {
+    setTags((current) => Array.from(new Set([...current, ...values.map((tag) => tag.trim()).filter(Boolean)])));
+    dispatch(pushToast({ title: "Knowledge areas applied", tone: "success" }));
+  };
+
+  const toolActions: Record<EditorToolId, () => void> = {
+    h1: () => insert("# ", "", "Heading"),
+    h2: () => insert("## ", "", "Heading"),
+    h3: () => insert("### ", "", "Heading"),
+    bold: () => insert("**", "**"),
+    italic: () => insert("_", "_"),
+    underline: () => insert("<u>", "</u>"),
+    quote: () => insert("> ", "", "Quote"),
+    bullets: () => insert("- ", "", "List item"),
+    numbers: () => insert("1. ", "", "List item"),
+    "inline-code": () => insert("`", "`", "code"),
+    "code-block": () => insert("```\n", "\n```", "code"),
+    link: () => insert("[", "](https://)", "link"),
+    image: () => insert("![", "](https://)", "alt"),
+    divider: () => insert("\n\n---\n\n", "", "")
+  };
+
+  const activeTools = useMemo(() => {
+    void selectionVersion;
+    const active = new Set<EditorToolId>();
+    const textarea = textareaRef.current;
+    if (!textarea) return active;
+    const { selectionStart: start, selectionEnd: end } = textarea;
+    const lineStart = content.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const prefix = content.slice(lineStart, start);
+    if (prefix.startsWith("### ")) active.add("h3");
+    else if (prefix.startsWith("## ")) active.add("h2");
+    else if (prefix.startsWith("# ")) active.add("h1");
+    if (content.slice(start - 2, start) === "**" && content.slice(end, end + 2) === "**") active.add("bold");
+    if (content.slice(start - 1, start) === "_" && content.slice(end, end + 1) === "_") active.add("italic");
+    if (prefix.startsWith("- ")) active.add("bullets");
+    if (/^\d+\. /.test(prefix)) active.add("numbers");
+    if (prefix.startsWith("> ")) active.add("quote");
+    return active;
+  }, [content, selectionVersion]);
+
+  const saveStateLabel = saveState === "saving"
+    ? "Saving…"
+    : saveState === "offline"
+      ? "Offline changes"
+      : saveState === "drafts"
+        ? "Saved to drafts"
+        : lastSavedAt
+          ? `Saved on this device ${lastSavedAt}`
+          : "Saved on this device";
+
+  const draftDisabledReason = !title.trim() ? "Add a title to save this draft" : !content.trim() ? "Start writing to save this draft" : undefined;
+  const publishDisabledReason = !title.trim() ? "Add a title before publishing" : !content.trim() ? "Start writing before publishing" : saveState === "offline" ? "Reconnect to publish" : undefined;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-      <section className="overflow-hidden rounded-lg border border-ink-200 bg-white p-0 shadow-sm dark:border-ink-800 dark:bg-ink-950">
-        <div className="z-10 border-b border-ink-200 bg-white/95 p-3 backdrop-blur dark:border-ink-800 dark:bg-ink-950/95">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Tabs
-              value={mode}
-              onChange={setMode}
-              items={[
-                { value: "write", label: "Write" },
-                { value: "preview", label: "Live Preview" }
-              ]}
-            />
-            <div className="flex flex-wrap gap-1">
-              {tools.map((tool) => (
-                <button
-                  key={tool.label}
-                  type="button"
-                  onClick={tool.action}
-                  title={tool.label}
-                  className="grid h-9 w-9 place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950 dark:text-ink-300 dark:hover:bg-ink-900 dark:hover:text-ink-50"
-                >
-                  <tool.icon className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
-          <Input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Title"
-            className="h-auto border-0 bg-transparent px-0 text-4xl font-semibold leading-tight shadow-none placeholder:text-ink-300 focus:ring-0 sm:text-5xl"
-          />
-
-          {mode === "write" ? (
-            <Textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="Tell the story..."
-              className="mt-8 min-h-[42rem] resize-y border-0 bg-transparent px-0 font-reading text-[1.08rem] leading-8 shadow-none placeholder:text-ink-400 focus:ring-0"
-            />
-          ) : (
-            <article className="reading-prose mt-8 min-h-[34rem]">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {content || "Preview will appear here as you write."}
-              </ReactMarkdown>
-            </article>
-          )}
-        </div>
-      </section>
-
-      <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-        <Card className="p-4">
-          <h3 className="font-semibold text-ink-950 dark:text-ink-50">Publishing</h3>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-ink-500">
-            <span className="rounded-lg bg-ink-100 p-2 dark:bg-ink-900">{readTime} min</span>
-            <span className="rounded-lg bg-ink-100 p-2 dark:bg-ink-900">{content.length} chars</span>
-            <span className="rounded-lg bg-ink-100 p-2 dark:bg-ink-900">{wordCount} words</span>
-          </div>
-          <p className="mt-3 text-xs text-ink-500">{lastSavedAt ? `Autosaved ${lastSavedAt}` : "Autosave is ready"}</p>
-          <div className="mt-4 grid gap-2">
-            <Button variant="secondary" disabled={!title || !content} loading={saving} onClick={() => submit("draft")}>
-              <Save className="h-4 w-4" />
-              Save draft
-            </Button>
-            <Button disabled={!title || !content} loading={saving} onClick={() => submit("published")}>
-              <Send className="h-4 w-4" />
-              Publish
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <label className="text-sm font-medium text-ink-900 dark:text-ink-100">Excerpt</label>
-          <Textarea value={excerpt} onChange={(event) => setExcerpt(event.target.value)} className="mt-2 min-h-24" />
-          <label className="mt-4 block text-sm font-medium text-ink-900 dark:text-ink-100">Tags</label>
-          <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="react, backend, dsa" className="mt-2" />
-          <div className="mt-3 flex items-center gap-2 text-xs text-ink-500">
-            <Eye className="h-3.5 w-3.5" />
-            Preview stays synced as you write.
-          </div>
-        </Card>
-
-        {onCoverUpload ? (
-          <Card className="p-4">
-            <h3 className="font-semibold text-ink-950 dark:text-ink-50">Cover</h3>
-            <div className="mt-3">
-              <UploadDropzone label="Upload article cover" onFile={onCoverUpload} loading={coverUploading} />
-            </div>
-            <div className="mt-3 overflow-hidden rounded-lg border border-dashed border-ink-200 bg-ink-50 p-2 text-center text-sm text-ink-500 dark:border-ink-700 dark:bg-ink-900">
-              {getImageSrc(coverImage) ? (
-                <img src={getImageSrc(coverImage)} alt="Selected cover" className="aspect-video w-full rounded-md object-cover" />
+    <div
+      className={cn(
+        "relative h-full min-h-0",
+        focusMode && "fixed inset-0 z-[80] h-dvh bg-ink-50 dark:bg-ink-950"
+      )}
+    >
+      <div
+        className={cn(
+          "grid h-full min-h-0 items-stretch gap-3",
+          focusMode || !panelOpen
+            ? "grid-cols-1"
+            : "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]"
+        )}
+      >
+        <section className={cn(
+          "ai-processing-surface relative flex min-h-0 flex-col overflow-hidden bg-white p-0 dark:bg-ink-950",
+          focusMode ? "border-0 shadow-none" : "rounded-xl border border-ink-200 shadow-sm dark:border-ink-800",
+          assistantState.isLoading && "is-ai-processing"
+        )}>
+          {assistantState.isLoading || assistantError ? (
+            <div className="ai-status-chip right-4 top-4">
+              <Sparkles className="h-3.5 w-3.5 text-accent-600" />
+              {assistantState.isLoading ? (
+                <span>{assistantStatus || "Thinking..."}</span>
               ) : (
-                <p className="py-6">No cover selected</p>
+                <>
+                  <span>{assistantError}</span>
+                  <button type="button" className="font-semibold text-accent-700 dark:text-accent-300" onClick={() => lastAssistantRequest?.()}>
+                    Retry
+                  </button>
+                </>
               )}
             </div>
-          </Card>
+          ) : null}
+          <div className={cn("z-20 shrink-0 border-b border-ink-200 bg-white/90 px-2 backdrop-blur-xl dark:border-ink-800 dark:bg-ink-950/90 sm:px-3", focusMode && "px-4 sm:px-6")}>
+            <ResponsiveEditorToolbar
+              mode={mode}
+              focusMode={focusMode}
+              panelOpen={panelOpen}
+              activeTools={activeTools}
+              onModeChange={setMode}
+              onFocusChange={(focus) => { setPanelOpen(false); setFocusMode(focus); }}
+              onPanelToggle={() => setPanelOpen((open) => !open)}
+              onTool={(tool) => toolActions[tool]()}
+            />
+          </div>
+
+          <div className={cn(
+            "mx-auto flex min-h-0 w-full flex-1 flex-col px-4 pb-3 pt-4 sm:px-7 lg:px-8",
+            focusMode ? "max-w-[52rem] pb-5 pt-6 sm:pt-10" : "max-w-[52rem]",
+            contentUpdating && "opacity-70 transition-opacity duration-200"
+          )}>
+            <Input
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                if (titleError) setTitleError("");
+              }}
+              placeholder="Title"
+              className={cn(
+                "h-auto rounded-none border-0 bg-transparent px-0 text-3xl font-semibold leading-tight shadow-none placeholder:font-normal placeholder:text-ink-400/70 focus:ring-0 dark:bg-transparent sm:text-4xl",
+                focusMode && "sm:text-[2.75rem]"
+              )}
+            />
+            {titleError ? <p className="mt-2 text-sm text-red-600 dark:text-red-300">{titleError}</p> : null}
+
+            {mode === "write" ? (
+              <div className="mt-1 flex min-h-0 flex-1 overflow-hidden sm:mt-3 sm:border-t sm:border-ink-200 dark:sm:border-ink-800">
+                <Textarea
+                  ref={textareaRef}
+                  data-writing-editor
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  onMouseUp={handleTextareaMouseUp}
+                  onKeyUp={handleTextareaMouseUp}
+                  placeholder={'Start writing…\n\nType "/" for commands · Markdown supported'}
+                  className="h-full min-h-0 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-0 py-3 font-reading text-[1.08rem] leading-8 shadow-none placeholder:text-ink-400/80 focus:ring-0 dark:bg-transparent sm:py-5"
+                />
+              </div>
+            ) : (
+              <article className="reading-prose mt-3 min-h-0 flex-1 overflow-y-auto border-t border-ink-200 py-5 dark:border-ink-800">
+                <div className="pb-4">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    {content || "Preview will appear here as you write."}
+                  </ReactMarkdown>
+                </div>
+              </article>
+            )}
+          </div>
+
+          <ArticlePublishBar
+            className="z-10 shrink-0"
+            focusMode={focusMode}
+            saveStateLabel={saveStateLabel}
+            draftDisabledReason={draftDisabledReason}
+            publishDisabledReason={publishDisabledReason}
+            readTime={readTime}
+            wordCount={wordCount}
+            charCount={content.length}
+            lastSavedAt={lastSavedAt}
+            saving={saving}
+            canSaveDraft={!draftDisabledReason}
+            canPublish={!publishDisabledReason}
+            onPreview={() => setMode("preview")}
+            onSaveDraft={() => submit("draft")}
+            onPublish={() => submit("published")}
+          />
+        </section>
+
+        {!focusMode && panelOpen ? (
+          <EditorSidebar
+            tab={sidebarTab}
+            onTabChange={setSidebarTab}
+            title={title}
+            excerpt={excerpt}
+            content={content}
+            tags={tags}
+            tagInput={tagInput}
+            coverImage={coverImage}
+            coverUploading={coverUploading}
+            author={currentUser as User | null}
+            readTime={readTime}
+            assistantResponse={assistantResponse}
+            assistantLoading={assistantState.isLoading}
+            lastAssistantAction={lastAssistantAction}
+            draftHistory={draftHistory}
+            onExcerptChange={setExcerpt}
+            onTagInputChange={setTagInput}
+            onCommitTag={commitTag}
+            onRemoveTag={removeTag}
+            onCoverUpload={onCoverUpload}
+            onAskAssistant={runAssistant}
+            onSelectionAsk={runSelectionAssistant}
+            onApplyTitle={(value) => {
+              setTitle(value);
+              dispatch(pushToast({ title: "Title applied", tone: "success" }));
+            }}
+            onApplyExcerpt={(value) => {
+              setExcerpt(value);
+              dispatch(pushToast({ title: "Excerpt applied", tone: "success" }));
+            }}
+            onApplyTags={applyTags}
+            onJumpToLine={jumpToLine}
+            onRestoreSnapshot={restoreSnapshot}
+            onDeleteSnapshot={(snapshotId) => {
+              deleteDraftSnapshot(initialArticle?._id, snapshotId);
+              setDraftHistory(loadDraftHistory(initialArticle?._id));
+            }}
+            onSaveVersion={handleSaveVersion}
+            savingVersion={savingVersion}
+            open={panelOpen}
+            onClose={() => setPanelOpen(false)}
+          />
         ) : null}
-      </aside>
+      </div>
+
+      {selectionMenu ? (
+        <div
+          data-selection-menu
+          className="fixed z-50 flex flex-wrap gap-1 rounded-2xl border border-ink-200 bg-white p-2 text-sm shadow-xl dark:border-ink-800 dark:bg-ink-950"
+          style={{ left: selectionMenu.x, top: selectionMenu.y }}
+        >
+          <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("explain-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
+            Explain
+          </Button>
+          <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("summarize-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
+            Summarize
+          </Button>
+          <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("simplify-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
+            Simplify
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={assistantState.isLoading}
+            onClick={() =>
+              runSelectionAssistant(
+                "custom",
+                selectionMenu.text,
+                "Review this selected passage for clarity and structure. Suggest improvements only; do not rewrite the full article.",
+                { start: selectionMenu.start, end: selectionMenu.end }
+              )
+            }
+          >
+            <Sparkles className="h-4 w-4" /> Ask AI
+          </Button>
+        </div>
+      ) : null}
+
+      {assistantPreview ? (
+        <div className="fixed inset-0 z-[90] grid place-items-center bg-ink-950/30 px-4 py-6 backdrop-blur-[2px]">
+          <div className="ai-preview-panel w-full max-w-3xl overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl dark:border-ink-800 dark:bg-ink-950">
+            <div className="flex items-center justify-between gap-3 border-b border-ink-200 px-4 py-3 dark:border-ink-800">
+              <div className="flex min-w-0 items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0 text-accent-600" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">{assistantPreview.title}</p>
+                  <p className="text-xs text-ink-500">
+                    {assistantPreview.scope === "selection" ? "Selected text will be replaced." : "The entire article will be replaced."}
+                  </p>
+                </div>
+              </div>
+              <Button type="button" variant="ghost" size="icon" aria-label="Keep original" onClick={() => setAssistantPreview(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="max-h-[min(64vh,42rem)] overflow-y-auto p-4">
+              <article className="reading-prose text-base leading-7">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                  {assistantPreview.content}
+                </ReactMarkdown>
+              </article>
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t border-ink-200 p-3 dark:border-ink-800 sm:flex-row sm:justify-end">
+              <Button type="button" variant="secondary" onClick={() => setAssistantPreview(null)}>
+                <X className="h-4 w-4" />
+                Keep Original
+              </Button>
+              <Button type="button" onClick={replaceContentWithPreview}>
+                <Check className="h-4 w-4" />
+                {assistantPreview.scope === "selection" ? "Replace Selected Text" : "Replace Current Content"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

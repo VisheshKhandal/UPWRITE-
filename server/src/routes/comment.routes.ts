@@ -10,6 +10,7 @@ import {
 
 const router = Router();
 
+router.get("/creator-inbox", requireAuth, interactionController.listCreatorComments);
 router.get("/", validateRequest(commentListSchema), interactionController.listComments);
 router.post("/", requireAuth, validateRequest(commentCreateSchema), interactionController.createComment);
 router.delete("/:id", requireAuth, validateRequest(commentIdParamsSchema), interactionController.deleteComment);

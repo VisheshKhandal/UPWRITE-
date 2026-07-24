@@ -19,7 +19,10 @@ const NotificationsPage = lazy(() => import("../pages/notifications/Notification
 const SavedPage = lazy(() => import("../pages/collections/SavedPage"));
 const ProfileSettingsPage = lazy(() => import("../pages/settings/ProfileSettingsPage"));
 const AboutPage = lazy(() => import("../pages/about/AboutPage"));
+const HelpPage = lazy(() => import("../pages/help/HelpPage"));
 const NotFoundPage = lazy(() => import("../pages/NotFoundPage"));
+const ReviewPage = lazy(() => import("../pages/review/ReviewPage"));
+const StudioPage = lazy(() => import("../pages/studio/StudioPage"));
 
 const PageLoader = () => (
   <div className="grid min-h-[50vh] place-items-center">
@@ -46,13 +49,20 @@ export const AppRouter = () => (
             <Route path="/profile/:username" element={<ProfilePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/about" element={<AboutPage />} />
+            <Route path="/help" element={<HelpPage />} />
 
             <Route element={<ProtectedRoute />}>
               <Route index element={<FeedPage />} />
+              <Route path="/today" element={<Navigate to="/" replace />} />
+              <Route path="/read" element={<SearchPage />} />
+              <Route path="/learn" element={<ReviewPage />} />
+              <Route path="/review" element={<Navigate to="/learn" replace />} />
+              <Route path="/studio" element={<StudioPage />} />
               <Route path="/write" element={<WritePage />} />
               <Route path="/write/:id" element={<WritePage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/saved" element={<SavedPage />} />
+              <Route path="/library" element={<SavedPage />} />
               <Route path="/bookmarks" element={<Navigate to="/saved" replace />} />
               <Route path="/collections" element={<Navigate to="/saved" replace />} />
               <Route path="/settings/profile" element={<ProfileSettingsPage />} />

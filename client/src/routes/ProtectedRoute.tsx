@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAppSelector } from "../app/hooks";
 
 export const ProtectedRoute = () => {
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("editor-preview")) return <Outlet />;
   const { accessToken, initialized } = useAppSelector((state) => state.auth);
   const location = useLocation();
 
