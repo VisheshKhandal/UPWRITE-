@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -31,12 +31,19 @@ import { useCreateHighlightMutation, useHighlightsByArticleQuery, type Highlight
 import { useCreateNoteMutation, useNotesByArticleQuery } from "../../features/notes/notesApi";
 import { useReadingProgressQuery, useSyncReadingProgressMutation } from "../../features/readingProgress/readingProgressApi";
 import { Textarea } from "../../components/ui/Textarea";
+import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
 export default function ArticleDetailPage() {
   const { username = "", slug = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
+  const isAuthenticated = Boolean(currentUser);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+    open: false,
+    message: "Sign in to continue."
+  });
   const [hasViewed, setHasViewed] = useState(false);
   const [progress, setProgress] = useState(0);
   const [toggleLike, { isLoading: liking }] = useToggleLikeMutation();
@@ -62,6 +69,7 @@ export default function ArticleDetailPage() {
   const [noteDraft, setNoteDraft] = useState("");
   const commentSectionRef = useRef<HTMLDivElement | null>(null);
   const resumedArticleRef = useRef<string | null>(null);
+  const resumedActionRef = useRef(false);
   const { data: article, isLoading, error } = useArticleBySlugQuery(
     { username, slug },
     { skip: !username || !slug }
@@ -76,8 +84,8 @@ export default function ArticleDetailPage() {
   const [saveFlashcardSet, saveState] = useSaveFlashcardSetMutation();
   const [createHighlight] = useCreateHighlightMutation();
   const [createNote] = useCreateNoteMutation();
-  const { data: highlights = [] } = useHighlightsByArticleQuery(article?._id ?? "", { skip: !article?._id });
-  const { data: readerNotes = [] } = useNotesByArticleQuery(article?._id ?? "", { skip: !article?._id });
+  const { data: highlights = [] } = useHighlightsByArticleQuery(article?._id ?? "", { skip: !article?._id || !isAuthenticated });
+  const { data: readerNotes = [] } = useNotesByArticleQuery(article?._id ?? "", { skip: !article?._id || !isAuthenticated });
   const { data: readingProgress = [] } = useReadingProgressQuery(undefined, { skip: !currentUser });
   const [syncProgress] = useSyncReadingProgressMutation();
 
@@ -102,6 +110,10 @@ export default function ArticleDetailPage() {
 
   const handleLike = async () => {
     if (!article) return;
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to like this article.", action: "like" });
+      return;
+    }
     const nextLiked = !liked;
     setLiked(nextLiked);
     setLikeCount((count) => Math.max(0, count + (nextLiked ? 1 : -1)));
@@ -117,22 +129,34 @@ export default function ArticleDetailPage() {
     } catch {
       setLiked(liked);
       setLikeCount(article.stats?.likesCount ?? 0);
-      dispatch(pushToast({ title: "Unable to update like", tone: "error" }));
+      dispatch(pushToast({ title: "Sign in to like articles and build your learning profile.", tone: "error" }));
     }
   };
 
   const handleCommentClick = () => {
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to comment on this article.", action: "comment" });
+      return;
+    }
     commentSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const saveSelectedHighlight = async (text: string) => {
     if (!article) return;
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to save this highlight.", action: "highlight" });
+      return;
+    }
     await createHighlight({ article: article._id, text }).unwrap();
     setSelectionMenu(null);
     dispatch(pushToast({ title: "Highlight saved", tone: "success" }));
   };
 
   const addSelectedNote = async (text: string) => {
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to save private notes.", action: "note" });
+      return;
+    }
     const matchingHighlight = highlights.find((highlight) => highlight.text.trim() === text.trim());
     setNoteModal({ text, highlightId: matchingHighlight?._id });
     setNoteDraft("");
@@ -141,6 +165,10 @@ export default function ArticleDetailPage() {
 
   const submitNote = async () => {
     if (!article || !noteModal || !noteDraft.trim()) return;
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to save private notes.", action: "note" });
+      return;
+    }
     let highlightId = noteModal.highlightId;
     if (!highlightId) {
       const savedHighlight = await createHighlight({ article: article._id, text: noteModal.text }).unwrap();
@@ -207,6 +235,10 @@ export default function ArticleDetailPage() {
 
   const runAiAction = async (action: AiAction, options?: { selectedText?: string; question?: string; allowFallback?: boolean }) => {
     if (!articleContext) return;
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to build your learning library.", action: "ai" });
+      return;
+    }
     setIsAiOpen(true);
     setAiError("");
     setAiResult("");
@@ -257,6 +289,10 @@ export default function ArticleDetailPage() {
 
   const runLearningMode = async (allowFallback = false) => {
     if (!articleContext || learningState.isLoading) return;
+    if (!isAuthenticated) {
+      setAuthPrompt({ open: true, message: "Sign in to build your learning library.", action: "study" });
+      return;
+    }
     setLearningError("");
     try {
       const cacheKey = `upwrite-ai:${articleContext.id ?? slug}:learning-mode`;
@@ -348,13 +384,17 @@ export default function ArticleDetailPage() {
     };
 
     setMeta("description", description);
+    setMeta("twitter:card", "summary_large_image");
     setProperty("og:title", article.title);
     setProperty("og:description", description);
     setProperty("og:image", getImageSrc(article.coverImage) ?? "");
     setProperty("og:url", url);
-    setProperty("twitter:title", article.title);
-    setProperty("twitter:description", description);
-    setProperty("twitter:image", getImageSrc(article.coverImage) ?? "");
+    setProperty("og:type", "article");
+    setProperty("og:site_name", "Upwrite");
+    setProperty("article:author", article.author?.name ?? article.author?.username ?? "Upwrite");
+    setMeta("twitter:title", article.title);
+    setMeta("twitter:description", description);
+    setMeta("twitter:image", getImageSrc(article.coverImage) ?? "");
   }, [article]);
 
   useEffect(() => {
@@ -448,7 +488,7 @@ export default function ArticleDetailPage() {
       const progress = Math.min(100, Math.max(0, ((windowHeight - top) / (height + windowHeight)) * 100));
       setProgress(progress);
 
-      if (!article?._id) return;
+      if (!article?._id || !isAuthenticated) return;
       const roundedProgress = Math.round(progress);
       const saveState = progressSaveRef.current;
       if (saveState.articleId !== article._id) {
@@ -499,7 +539,7 @@ export default function ArticleDetailPage() {
       window.clearTimeout(progressSaveRef.current.pendingTimer);
       progressSaveRef.current.pendingTimer = 0;
     };
-  }, [article?._id, syncProgress]);
+  }, [article?._id, isAuthenticated, syncProgress]);
 
   useEffect(() => {
     if (!article?._id || !readingProgress.length || resumedArticleRef.current === article._id) return;
@@ -516,6 +556,21 @@ export default function ArticleDetailPage() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [article?._id, dispatch, readingProgress]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !article || resumedActionRef.current) return;
+    const resumeAction = (location.state as { resumeAction?: string } | null)?.resumeAction;
+    if (!resumeAction) return;
+    resumedActionRef.current = true;
+    window.history.replaceState({}, "", window.location.href);
+
+    if (resumeAction === "like") void handleLike();
+    if (resumeAction === "comment") {
+      window.setTimeout(() => commentSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+    if (resumeAction === "ai") void runAiAction("summarize");
+    if (resumeAction === "study") void runLearningMode();
+  }, [article, isAuthenticated, location.state]);
 
   if (isLoading) {
     return (
@@ -555,7 +610,7 @@ export default function ArticleDetailPage() {
       await saveFlashcardSet({ articleId: article._id, articleTitle: article.title, cards: flashcards }).unwrap();
       dispatch(pushToast({ title: "Flashcards saved to Library", tone: "success" }));
     } catch {
-      dispatch(pushToast({ title: "Could not save to Library", tone: "error" }));
+      dispatch(pushToast({ title: "Sign in to save this article to your library.", tone: "error" }));
     }
   };
 
@@ -1022,6 +1077,12 @@ export default function ArticleDetailPage() {
           </div>
         </div>
       ) : null}
+      <AuthPrompt
+        open={authPrompt.open}
+        message={authPrompt.message}
+        action={authPrompt.action}
+        onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
+      />
     </div>
   );
 }

@@ -10,6 +10,8 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import type { ReactNode } from "react";
 import { SaveToCollectionButton } from "../saved/SaveToCollectionButton";
+import { useAppSelector } from "../../app/hooks";
+import { AuthPrompt } from "../auth/AuthPrompt";
 
 export const PostCard = ({
   post,
@@ -21,11 +23,17 @@ export const PostCard = ({
   actions?: ReactNode;
 }) => {
   const [toggleLike, { isLoading: liking }] = useToggleLikeMutation();
+  const user = useAppSelector((state) => state.auth.user);
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(post.engagement?.likesCount ?? 0);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const onLike = async () => {
     if (liking) return;
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
     const nextLiked = !liked;
     setLiked(nextLiked);
     setLikesCount((count) => Math.max(0, count + (nextLiked ? 1 : -1)));
@@ -92,6 +100,7 @@ export const PostCard = ({
       </div>
 
       {actions ? <div className="mt-3 flex flex-wrap gap-2">{actions}</div> : null}
+      <AuthPrompt open={authOpen} message="Sign in to like this learning log." action="like" onClose={() => setAuthOpen(false)} />
     </Card>
   );
 };

@@ -13,6 +13,8 @@ import { SafeImage } from "../ui/SafeImage";
 import type { ReactNode } from "react";
 import { SaveToCollectionButton } from "../saved/SaveToCollectionButton";
 import { cn } from "../../utils/cn";
+import { useAppSelector } from "../../app/hooks";
+import { AuthPrompt } from "../auth/AuthPrompt";
 
 export const ArticleCard = ({
   article,
@@ -24,12 +26,18 @@ export const ArticleCard = ({
   className?: string;
 }) => {
   const [toggleLike, { isLoading: liking }] = useToggleLikeMutation();
+  const user = useAppSelector((state) => state.auth.user);
   const articleUrl = `/articles/${article.author?.username}/${article.slug}`;
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(article.stats?.likesCount ?? 0);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const onLike = async () => {
     if (liking) return;
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
     const nextLiked = !liked;
     setLiked(nextLiked);
     setLikesCount((count) => Math.max(0, count + (nextLiked ? 1 : -1)));
@@ -113,6 +121,7 @@ export const ArticleCard = ({
 
         {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
+      <AuthPrompt open={authOpen} message="Sign in to like this article." action="like" onClose={() => setAuthOpen(false)} />
     </Card>
   );
 };

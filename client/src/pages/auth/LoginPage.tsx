@@ -4,6 +4,7 @@ import { useAppDispatch } from "../../app/hooks";
 import { setCredentials, setInitialized } from "../../features/auth/authSlice";
 import { useLoginMutation } from "../../features/auth/authApi";
 import { startOAuth } from "../../features/auth/oauth";
+import { consumeAuthIntent } from "../../features/auth/authIntent";
 import { pushToast, setTheme } from "../../features/ui/uiSlice";
 import { getErrorMessage } from "../../utils/errors";
 import { Button } from "../../components/ui/Button";
@@ -18,7 +19,8 @@ export default function LoginPage() {
   const [login, { isLoading }] = useLoginMutation();
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/";
+  const locationState = location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null;
+  const from = `${locationState?.from?.pathname ?? "/"}${locationState?.from?.search ?? ""}${locationState?.from?.hash ?? ""}`;
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -28,7 +30,8 @@ export default function LoginPage() {
       dispatch(setTheme(result.user.appearanceSettings?.theme ?? "system"));
       dispatch(setInitialized(true));
       dispatch(pushToast({ title: "Welcome back", tone: "success" }));
-      navigate(from, { replace: true });
+      const intent = consumeAuthIntent();
+      navigate(intent?.path ?? from, { replace: true, state: intent?.action ? { resumeAction: intent.action } : undefined });
     } catch (error) {
       dispatch(pushToast({ title: getErrorMessage(error, "Login failed"), tone: "error" }));
     }

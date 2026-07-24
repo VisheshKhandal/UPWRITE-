@@ -1,5 +1,6 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useAppSelector } from "../app/hooks";
+import { AuthPrompt } from "../components/auth/AuthPrompt";
 
 export const ProtectedRoute = () => {
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("editor-preview")) return <Outlet />;
@@ -15,7 +16,17 @@ export const ProtectedRoute = () => {
   }
 
   if (!accessToken) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    const path = location.pathname;
+    const message = path.startsWith("/write")
+      ? "Sign in to publish your article."
+      : path.startsWith("/saved") || path.startsWith("/library") || path.startsWith("/learn")
+        ? "Sign in to build your learning library."
+        : "Sign in to continue.";
+    return (
+      <div className="min-h-[60vh]">
+        <AuthPrompt open message={message} action="route" onClose={() => window.history.back()} />
+      </div>
+    );
   }
 
   return <Outlet />;

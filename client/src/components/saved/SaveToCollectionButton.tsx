@@ -1,13 +1,15 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Bookmark, FolderPlus, Lock, X } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import { useCreateCollectionMutation, useCollectionsQuery } from "../../features/collections/collectionsApi";
 import { useSaveContentMutation } from "../../features/saved/savedApi";
 import { pushToast } from "../../features/ui/uiSlice";
-import { useAppDispatch } from "../../app/hooks";
+import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import type { ContentType } from "../../types/models";
 import { getErrorMessage } from "../../utils/errors";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { AuthPrompt } from "../auth/AuthPrompt";
 
 interface SaveToCollectionButtonProps {
   contentType: ContentType;
@@ -17,11 +19,15 @@ interface SaveToCollectionButtonProps {
 
 export const SaveToCollectionButton = ({ contentType, contentId, compact }: SaveToCollectionButtonProps) => {
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.auth.user);
+  const location = useLocation();
+  const resumedSaveRef = useRef(false);
   const [open, setOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [newCollection, setNewCollection] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [saved, setSaved] = useState(false);
-  const { data: collections = [] } = useCollectionsQuery({ limit: 30 }, { skip: !open });
+  const { data: collections = [] } = useCollectionsQuery({ limit: 30 }, { skip: !open || !user });
   const [saveContent, saveState] = useSaveContentMutation();
   const [createCollection, createState] = useCreateCollectionMutation();
 
@@ -32,9 +38,20 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
       dispatch(pushToast({ title: "Saved", tone: "success" }));
       setOpen(false);
     } catch (error) {
-      dispatch(pushToast({ title: getErrorMessage(error, "Could not save"), tone: "error" }));
+      dispatch(pushToast({ title: getErrorMessage(error, "Sign in to save this article to your library."), tone: "error" }));
     }
   };
+
+  useEffect(() => {
+    if (!user || resumedSaveRef.current) return;
+    const resumeAction = (location.state as { resumeAction?: string } | null)?.resumeAction;
+    if (resumeAction !== "save") return;
+    const resumeKey = `upwrite.resumedSave.${contentType}.${contentId}.${window.location.pathname}`;
+    if (sessionStorage.getItem(resumeKey)) return;
+    resumedSaveRef.current = true;
+    sessionStorage.setItem(resumeKey, "true");
+    void save();
+  }, [contentId, contentType, location.state, user]);
 
   const createAndSave = async (event: FormEvent) => {
     event.preventDefault();
@@ -47,7 +64,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
       setNewCollection("");
       setIsPublic(false);
     } catch (error) {
-      dispatch(pushToast({ title: getErrorMessage(error, "Could not create collection"), tone: "error" }));
+      dispatch(pushToast({ title: getErrorMessage(error, "Sign in to organize your knowledge."), tone: "error" }));
     }
   };
 
@@ -57,7 +74,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
         variant="ghost"
         size={compact ? "icon" : "sm"}
         disabled={saveState.isLoading}
-        onClick={() => setOpen(true)}
+        onClick={() => (user ? setOpen(true) : setAuthOpen(true))}
         aria-label="Save"
         className={saved ? "text-accent-700 dark:text-accent-300" : undefined}
       >
@@ -121,6 +138,7 @@ export const SaveToCollectionButton = ({ contentType, contentId, compact }: Save
           </div>
         </div>
       ) : null}
+      <AuthPrompt open={authOpen} message="Sign in to save this article to your library." action="save" onClose={() => setAuthOpen(false)} />
     </>
   );
 };

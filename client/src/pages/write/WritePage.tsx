@@ -120,7 +120,7 @@ export default function WritePage() {
       if (input.status === "published") navigate(`/articles/${saved.author?.username ?? currentUser?.username}/${saved.slug}`);
       else if (!id) navigate(`/write/${saved._id}`);
     } catch (error) {
-      dispatch(pushToast({ title: getErrorMessage(error, "Could not save article"), tone: "error" }));
+      dispatch(pushToast({ title: getErrorMessage(error, "Sign in before publishing your article."), tone: "error" }));
       throw error;
     }
   };
@@ -230,7 +230,7 @@ const PostWriter = ({
       dispatch(pushToast({ title: "Learning log published", tone: "success" }));
       navigate("/");
     } catch (error) {
-      dispatch(pushToast({ title: getErrorMessage(error, "Could not publish note"), tone: "error" }));
+      dispatch(pushToast({ title: getErrorMessage(error, "Sign in before publishing your learning log."), tone: "error" }));
     }
   };
 

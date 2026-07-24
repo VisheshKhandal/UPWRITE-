@@ -1,11 +1,14 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { setCredentials, setCurrentUser, setInitialized } from "../../features/auth/authSlice";
 import { useLazyMeQuery, useRefreshMutation } from "../../features/auth/authApi";
 import { setTheme } from "../../features/ui/uiSlice";
+import { consumeAuthIntent } from "../../features/auth/authIntent";
 
 export const AuthBootstrap = () => {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const initialized = useAppSelector((state) => state.auth.initialized);
   const started = useRef(false);
   const [refresh] = useRefreshMutation();
@@ -22,6 +25,10 @@ export const AuthBootstrap = () => {
         const user = await loadMe().unwrap();
         dispatch(setCurrentUser(user));
         dispatch(setTheme(user.appearanceSettings?.theme ?? "system"));
+        const intent = consumeAuthIntent();
+        if (intent) {
+          navigate(intent.path, { replace: true, state: intent.action ? { resumeAction: intent.action } : undefined });
+        }
       } catch {
         dispatch(setCurrentUser(null));
       } finally {

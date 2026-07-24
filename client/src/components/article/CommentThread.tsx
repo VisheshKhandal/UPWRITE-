@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { useCommentsQuery, useCreateCommentMutation } from "../../features/comments/commentsApi";
+import { useAppSelector } from "../../app/hooks";
 import type { ContentType } from "../../types/models";
 import { formatRelative } from "../../utils/formatDate";
 import { Avatar } from "../ui/Avatar";
@@ -8,14 +9,21 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Textarea } from "../ui/Textarea";
 import { EmptyState } from "../common/EmptyState";
+import { AuthPrompt } from "../auth/AuthPrompt";
 
 export const CommentThread = ({ contentType, contentId }: { contentType: ContentType; contentId: string }) => {
   const [body, setBody] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const user = useAppSelector((state) => state.auth.user);
   const { data: comments = [], isLoading } = useCommentsQuery({ contentType, contentId, limit: 20 });
   const [createComment, { isLoading: creating }] = useCreateCommentMutation();
 
   const submit = async () => {
     if (!body.trim()) return;
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
     await createComment({ contentType, contentId, body: body.trim() }).unwrap();
     setBody("");
   };
@@ -51,6 +59,7 @@ export const CommentThread = ({ contentType, contentId }: { contentType: Content
           </Card>
         ))}
       </div>
+      <AuthPrompt open={authOpen} message="Sign in to join the discussion." action="comment" onClose={() => setAuthOpen(false)} />
     </section>
   );
 };

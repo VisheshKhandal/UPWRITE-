@@ -45,6 +45,9 @@ export const AppRouter = () => (
           </Route>
 
           <Route element={<AppLayout />}>
+            <Route index element={<FeedPage />} />
+            <Route path="/today" element={<Navigate to="/" replace />} />
+            <Route path="/read" element={<SearchPage />} />
             <Route path="/articles/:username/:slug" element={<ArticleDetailPage />} />
             <Route path="/profile/:username" element={<ProfilePage />} />
             <Route path="/search" element={<SearchPage />} />
@@ -52,9 +55,6 @@ export const AppRouter = () => (
             <Route path="/help" element={<HelpPage />} />
 
             <Route element={<ProtectedRoute />}>
-              <Route index element={<FeedPage />} />
-              <Route path="/today" element={<Navigate to="/" replace />} />
-              <Route path="/read" element={<SearchPage />} />
               <Route path="/learn" element={<ReviewPage />} />
               <Route path="/review" element={<Navigate to="/learn" replace />} />
               <Route path="/studio" element={<StudioPage />} />

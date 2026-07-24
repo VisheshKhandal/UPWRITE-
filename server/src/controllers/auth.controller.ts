@@ -10,6 +10,8 @@ import { sendSuccess } from "../utils/apiResponse";
 const refreshCookieName = "upwrite_refresh";
 const googleStateCookieName = "upwrite_google_state";
 const githubStateCookieName = "upwrite_github_state";
+const googleReturnCookieName = "upwrite_google_return";
+const githubReturnCookieName = "upwrite_github_return";
 
 const cookieOptions = {
   httpOnly: true,
@@ -62,6 +64,12 @@ const redirectToClient = (res: Response, path = "/") => {
   return res.redirect(target.toString());
 };
 
+const safeReturnPath = (value: unknown) => {
+  if (typeof value !== "string") return "/";
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.length > 500) return "/";
+  return value;
+};
+
 const githubRequest = async <T>(url: string, init: RequestInit) => {
   const response = await fetch(url, {
     ...init,
@@ -93,7 +101,7 @@ export const authController = {
     return sendSuccess(res, { user: result.user, accessToken: result.accessToken }, "Logged in");
   }),
 
-  googleStart: asyncHandler(async (_req, res) => {
+  googleStart: asyncHandler(async (req, res) => {
     const state = crypto.randomBytes(32).toString("hex");
     const authorizationUrl = googleClient().generateAuthUrl({
       access_type: "offline",
@@ -103,13 +111,16 @@ export const authController = {
     });
 
     res.cookie(googleStateCookieName, state, oauthStateCookieOptions);
+    res.cookie(googleReturnCookieName, safeReturnPath(req.query.returnTo), oauthStateCookieOptions);
     return res.redirect(authorizationUrl);
   }),
 
   googleCallback: asyncHandler(async (req, res) => {
     const { code, error, state } = req.query;
     const storedState = req.cookies?.[googleStateCookieName];
+    const returnTo = safeReturnPath(req.cookies?.[googleReturnCookieName]);
     res.clearCookie(googleStateCookieName, oauthStateCookieOptions);
+    res.clearCookie(googleReturnCookieName, oauthStateCookieOptions);
 
     if (error) {
       console.warn("Google OAuth was cancelled or failed", { error });
@@ -144,14 +155,14 @@ export const authController = {
       );
 
       setRefreshCookie(res, result.refreshToken);
-      return redirectToClient(res, "/");
+      return redirectToClient(res, returnTo);
     } catch (error) {
       console.error("Google OAuth callback failed", error);
       throw new AppError("Google authentication failed", 401);
     }
   }),
 
-  githubStart: asyncHandler(async (_req, res) => {
+  githubStart: asyncHandler(async (req, res) => {
     const state = crypto.randomBytes(32).toString("hex");
     const config = githubConfig();
     const authorizationUrl = new URL("https://github.com/login/oauth/authorize");
@@ -162,13 +173,16 @@ export const authController = {
     authorizationUrl.searchParams.set("allow_signup", "true");
 
     res.cookie(githubStateCookieName, state, oauthStateCookieOptions);
+    res.cookie(githubReturnCookieName, safeReturnPath(req.query.returnTo), oauthStateCookieOptions);
     return res.redirect(authorizationUrl.toString());
   }),
 
   githubCallback: asyncHandler(async (req, res) => {
     const { code, error, state } = req.query;
     const storedState = req.cookies?.[githubStateCookieName];
+    const returnTo = safeReturnPath(req.cookies?.[githubReturnCookieName]);
     res.clearCookie(githubStateCookieName, oauthStateCookieOptions);
+    res.clearCookie(githubReturnCookieName, oauthStateCookieOptions);
 
     if (error) {
       console.warn("GitHub OAuth was cancelled or failed", { error });
@@ -221,7 +235,7 @@ export const authController = {
       );
 
       setRefreshCookie(res, result.refreshToken);
-      return redirectToClient(res, "/");
+      return redirectToClient(res, returnTo);
     } catch (error) {
       console.error("GitHub OAuth callback failed", error);
       throw new AppError("GitHub authentication failed", 401);

@@ -16,6 +16,7 @@ import { useLatestFeedQuery, useTrendingFeedQuery } from "../../features/feed/fe
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
 import type { Article, Post } from "../../types/models";
 import { getImageSrc } from "../../utils/image";
+import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
 const FEED_PAGE_SIZE = 4;
 const shortcutCardClass =
@@ -49,6 +50,10 @@ export default function FeedPage() {
   const [contentFilter, setContentFilter] = useState<"articles" | "logs">("articles");
   const [page, setPage] = useState(1);
   const [commentTarget, setCommentTarget] = useState<string | null>(null);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+    open: false,
+    message: "Sign in to continue."
+  });
   const user = useAppSelector((state) => state.auth.user);
   const latest = useLatestFeedQuery({ page, limit: FEED_PAGE_SIZE }, { skip: tab !== "latest" });
   const trending = useTrendingFeedQuery({ page, limit: FEED_PAGE_SIZE }, { skip: tab !== "trending" });
@@ -91,6 +96,13 @@ export default function FeedPage() {
   }, [page, totalPages]);
 
   const feedLabel = contentFilter === "articles" ? "articles" : "learning logs";
+  const requireAuthAction = (message: string, action: string, callback: () => void) => {
+    if (user) {
+      callback();
+      return;
+    }
+    setAuthPrompt({ open: true, message, action });
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
@@ -106,7 +118,7 @@ export default function FeedPage() {
               <PlayCircle className="h-4 w-4" />
               {inProgressUrl ? "Resume reading" : "Find a read"}
             </Button>
-            <Button variant="secondary" onClick={() => navigate("/write")}>Write draft</Button>
+            <Button variant="secondary" onClick={() => requireAuthAction("Sign in to publish your article.", "route", () => navigate("/write"))}>Write draft</Button>
           </div>
         </div>
       </section>
@@ -166,9 +178,9 @@ export default function FeedPage() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <SummaryCard icon={Bookmark} label="Library" title="Open saved knowledge" onClick={() => navigate("/library")} description="Collect articles, notes, and ideas you want to revisit." />
-          <SummaryCard icon={FileText} label="Drafts" title={latestDraft ? "Continue writing your ideas" : "Shape your first draft"} onClick={() => navigate("/studio?tab=drafts")} description={draftsLoading ? "Opening your writing workspace." : latestDraft ? latestDraft.title || "Pick up an unfinished draft." : "Start with a rough thought and refine it over time."} />
-          <SummaryCard icon={PenLine} label="Learning logs" title="Capture today's learning" onClick={() => navigate("/write")} description="Record a quick update, reflection, or idea while it is still fresh." />
+          <SummaryCard icon={Bookmark} label="Library" title="Open saved knowledge" onClick={() => requireAuthAction("Sign in to build your learning library.", "route", () => navigate("/library"))} description="Collect articles, notes, and ideas you want to revisit." />
+          <SummaryCard icon={FileText} label="Drafts" title={latestDraft ? "Continue writing your ideas" : "Shape your first draft"} onClick={() => requireAuthAction("Sign in to publish your article.", "route", () => navigate("/studio?tab=drafts"))} description={draftsLoading ? "Opening your writing workspace." : latestDraft ? latestDraft.title || "Pick up an unfinished draft." : "Start with a rough thought and refine it over time."} />
+          <SummaryCard icon={PenLine} label="Learning logs" title="Capture today's learning" onClick={() => requireAuthAction("Sign in to write a learning log.", "route", () => navigate("/write"))} description="Record a quick update, reflection, or idea while it is still fresh." />
         </div>
       </section>
 
@@ -207,7 +219,11 @@ export default function FeedPage() {
             <div key={`post-${feedItem.item._id}`} className="space-y-3">
               <PostCard
                 post={feedItem.item as Post}
-                onOpenComments={() => setCommentTarget(commentTarget === feedItem.item._id ? null : feedItem.item._id)}
+                onOpenComments={() =>
+                  requireAuthAction("Sign in to comment on this learning log.", "comment", () =>
+                    setCommentTarget(commentTarget === feedItem.item._id ? null : feedItem.item._id)
+                  )
+                }
               />
               {commentTarget === feedItem.item._id ? <CommentThread contentType="post" contentId={feedItem.item._id} /> : null}
             </div>
@@ -245,6 +261,12 @@ export default function FeedPage() {
         </Link>
         .
       </div>
+      <AuthPrompt
+        open={authPrompt.open}
+        message={authPrompt.message}
+        action={authPrompt.action}
+        onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
+      />
     </div>
   );
 }
