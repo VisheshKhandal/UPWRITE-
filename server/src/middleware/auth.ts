@@ -45,7 +45,7 @@ export const optionalAuth = (req: Request, _res: Response, next: NextFunction) =
 
     return next();
   } catch {
-    throw new AppError("Invalid or expired access token", 401);
+    return next();
   }
 };
 
