@@ -33,6 +33,7 @@ import { NotificationDropdown } from "../notifications/NotificationDropdown";
 import { SearchDiscovery } from "../search/SearchDiscovery";
 import { Button } from "../ui/Button";
 import { BrandLogo } from "../brand/BrandLogo";
+import { useInstallAction } from "../../pwa/InstallApp";
 import { Avatar } from "../ui/Avatar";
 import { cn } from "../../utils/cn";
 import { clearUserScopedStorage } from "../../utils/userLocalData";
@@ -303,6 +304,8 @@ export const TopBar = () => {
     navigate("/login");
   };
 
+  const install = useInstallAction();
+
   const go = (to: string) => {
     setMenuOpen(false);
     navigate(to);
@@ -313,6 +316,8 @@ export const TopBar = () => {
     icon: typeof UserRound;
     action: () => void;
     tour?: string;
+    disabled?: boolean;
+    hasPopup?: "dialog";
   };
 
   const getMenuItems = (mobile: boolean): AccountMenuItem[][] => {
@@ -329,13 +334,24 @@ export const TopBar = () => {
         tour: "settings"
       });
     }
-    return [
-      primaryGroup,
-      [
-        { label: "About Upwrite", icon: Info, action: () => go("/about") },
-        { label: "Help Center", icon: HelpCircle, action: () => go("/help") }
-      ]
+    const secondaryGroup: AccountMenuItem[] = [
+      { label: "About Upwrite", icon: Info, action: () => go("/about") },
+      { label: "Help Center", icon: HelpCircle, action: () => go("/help") }
     ];
+    if (install.mode !== "hidden") {
+      secondaryGroup.push({
+        label: install.label,
+        icon: install.Icon,
+        disabled: install.disabled,
+        hasPopup: install.mode === "guide" ? "dialog" : undefined,
+        tour: "install-app",
+        action: () => {
+          setMenuOpen(false);
+          void install.onClick();
+        }
+      });
+    }
+    return [primaryGroup, secondaryGroup];
   };
 
   const MenuContent = ({ mobile = false }: { mobile?: boolean }) => {
@@ -371,8 +387,10 @@ export const TopBar = () => {
                   type="button"
                   role="menuitem"
                   data-tour={item.tour}
+                  disabled={item.disabled}
+                  aria-haspopup={item.hasPopup}
                   onClick={item.action}
-                  className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-content-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+                  className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-content-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-60"
                 >
                   <item.icon className="h-4 w-4 shrink-0 text-content-muted" aria-hidden="true" />
                   {item.label}
@@ -606,6 +624,8 @@ export const TopBar = () => {
           </div>
         ) : null}
       </AnimatePresence>
+
+      {install.guide}
     </>
   );
 };

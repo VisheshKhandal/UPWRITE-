@@ -25,7 +25,7 @@ export const useInstallAction = () => {
   if (state.isStandalone || state.installedThisSession) mode = "hidden";
   else if (state.canPrompt) mode = "prompt";
   else if (state.awaitingInstall) mode = "pending";
-  else if (state.platform === "ios" || state.platform === "macos-safari") mode = "guide";
+  else mode = "guide";
 
   const label = mode === "pending" ? "Installing…" : "Install App";
 
