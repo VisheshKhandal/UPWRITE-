@@ -1,6 +1,7 @@
 import { baseApi, unwrapResponse } from "../../services/baseApi";
 
 export interface ReaderNote {
+  user?: string;
   _id: string;
   article: string;
   highlight?: string;

@@ -9,7 +9,7 @@ export const feedController = {
   }),
 
   trending: asyncHandler(async (req, res) => {
-    const result = await feedService.trending(req);
+    const result = await feedService.trending(req, req.user?.id);
     return sendSuccess(res, result.items, "Trending feed", 200, result.meta);
   })
 };

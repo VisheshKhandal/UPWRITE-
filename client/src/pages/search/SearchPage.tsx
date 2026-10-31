@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { motion } from "framer-motion";
 import { ArrowDownAZ, Clock, FileText, Flame, Heart, Search, Sparkles, X } from "lucide-react";
 import { ArticleCard } from "../../components/article/ArticleCard";
 import { EmptyState } from "../../components/common/EmptyState";
@@ -10,8 +11,10 @@ import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Tabs } from "../../components/ui/Tabs";
 import { useTopArticlesQuery } from "../../features/explore/exploreApi";
-import { useArticlesQuery } from "../../features/articles/articlesApi";
+import { articlesApi, useArticlesQuery } from "../../features/articles/articlesApi";
 import { useSearchQuery } from "../../features/search/searchApi";
+import { getLocalRevealTransition, useReducedMotionPreference } from "../../motion/system";
+import { useArticleLinkActivation } from "../../motion/useArticleLinkProps";
 import { cn } from "../../utils/cn";
 import type { Article } from "../../types/models";
 
@@ -37,14 +40,12 @@ export default function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get("q")?.trim() ?? "";
   const activeTag = params.get("tag")?.trim() ?? "";
-  const [filter, setFilter] = useState<ReadFilter>("newest");
+  const filter: ReadFilter = params.get("sort") === "popular" ? "popular" : params.get("sort") === "liked" ? "liked" : "newest";
+  const setFilter = (value: ReadFilter) => { const next = new URLSearchParams(params); next.set("sort", value); setParams(next); };
   const [searchValue, setSearchValue] = useState(query);
-  const [highlightFirst, setHighlightFirst] = useState(false);
-  const [feedSettling, setFeedSettling] = useState(false);
-  const [guideNonce, setGuideNonce] = useState(0);
   const resultsRef = useRef<HTMLElement | null>(null);
-  const didMountRef = useRef(false);
-  const interactionRef = useRef(false);
+  const reducedMotion = useReducedMotionPreference();
+  const localReveal = getLocalRevealTransition(reducedMotion);
 
   const articlesQuery = useArticlesQuery({ limit: 48 });
   const topArticlesQuery = useTopArticlesQuery();
@@ -121,41 +122,12 @@ export default function SearchPage() {
     setSearchValue(query);
   }, [query]);
 
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    if (!interactionRef.current) return;
-
-    setFeedSettling(true);
-    const scrollTimer = window.setTimeout(() => {
-      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 160);
-    const highlightTimer = window.setTimeout(() => {
-      setFeedSettling(false);
-      setHighlightFirst(true);
-    }, 420);
-    const clearTimer = window.setTimeout(() => {
-      setHighlightFirst(false);
-      interactionRef.current = false;
-    }, 1650);
-
-    return () => {
-      window.clearTimeout(scrollTimer);
-      window.clearTimeout(highlightTimer);
-      window.clearTimeout(clearTimer);
-    };
-  }, [activeTag, filter, guideNonce, query]);
-
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const next = new URLSearchParams(params);
     const value = searchValue.trim();
     if (value) next.set("q", value);
     else next.delete("q");
-    interactionRef.current = true;
-    setGuideNonce((count) => count + 1);
     setParams(next);
   };
 
@@ -163,8 +135,6 @@ export default function SearchPage() {
     const next = new URLSearchParams(params);
     if (tag) next.set("tag", tag);
     else next.delete("tag");
-    interactionRef.current = true;
-    setGuideNonce((count) => count + 1);
     setParams(next);
   };
 
@@ -172,16 +142,12 @@ export default function SearchPage() {
     const next = new URLSearchParams(params);
     next.delete("q");
     next.delete("tag");
-    interactionRef.current = true;
-    setGuideNonce((count) => count + 1);
     setParams(next);
     setSearchValue("");
     setFilter("newest");
   };
 
   const changeFilter = (nextFilter: ReadFilter) => {
-    interactionRef.current = true;
-    setGuideNonce((count) => count + 1);
     setFilter(nextFilter);
   };
 
@@ -243,7 +209,7 @@ export default function SearchPage() {
                   type="button"
                   onClick={() => setTag(active ? "" : area.name)}
                   className={cn(
-                    "inline-flex shrink-0 items-center gap-2 rounded-full border border-ink-200 bg-white px-3.5 py-2 text-sm font-medium text-ink-700 transition-[border-color,background-color,color,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-500/40 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-accent-800",
+                    "inline-flex shrink-0 items-center gap-2 rounded-full border border-ink-200 bg-white px-3.5 py-2 text-sm font-medium text-ink-700 transition-[border-color,background-color,color] duration-150 hover:border-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-500/40 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-accent-800",
                     active && "border-accent-400 bg-accent-50 text-accent-900 dark:border-accent-700 dark:bg-accent-950/40 dark:text-accent-200"
                   )}
                 >
@@ -305,23 +271,21 @@ export default function SearchPage() {
         {isLoading ? <div className="grid gap-5 lg:grid-cols-2">{[0, 1, 2, 3].map((item) => <Card key={item} className="h-72 animate-pulse bg-ink-100 dark:bg-ink-900" />)}</div> : null}
 
         <div>
-          <div
-            className={cn(
-              "grid gap-5 transition-all duration-300 ease-out lg:grid-cols-2",
-              feedSettling ? "translate-y-2 opacity-60" : "translate-y-0 opacity-100"
-            )}
+          <motion.div
+            key={`${query}:${activeTag}:${filter}`}
+            initial={localReveal.initial}
+            animate={localReveal.animate}
+            transition={localReveal.transition}
+            className="grid gap-5 lg:grid-cols-2"
           >
-            {!isLoading && filteredArticles.map((article, index) => (
+            {!isLoading && filteredArticles.map((article) => (
               <ArticleCard
                 key={article._id}
                 article={article}
-                className={cn(
-                  "max-w-full min-w-0 [&_*]:min-w-0 [&_h2]:break-words",
-                  index === 0 && highlightFirst && "border-accent-400 shadow-[0_0_0_4px_rgba(52,211,153,0.14),0_18px_42px_rgba(15,23,42,0.16)] dark:border-accent-600 dark:shadow-[0_0_0_4px_rgba(16,185,129,0.16)]"
-                )}
+                className="max-w-full min-w-0 [&_*]:min-w-0 [&_h2]:break-words"
               />
             ))}
-          </div>
+          </motion.div>
         </div>
 
         {!isLoading && !filteredArticles.length ? (
@@ -356,14 +320,55 @@ function newestFirst(a: Article, b: Article) {
 }
 
 function CompactArticle({ article }: { article: Article }) {
+  const prefetchArticle = articlesApi.usePrefetch("articleBySlug");
+  const hasRoute = Boolean(article.author?.username && article.slug);
+  const href = hasRoute ? `/articles/${article.author.username}/${article.slug}` : "/read";
+  const handlePrefetch = () => {
+    if (!article.author?.username || !article.slug) return;
+    prefetchArticle({ username: article.author.username, slug: article.slug }, { ifOlderThan: 60 });
+    void import("../../pages/articles/ArticleDetailPage");
+  };
+  const activation = useArticleLinkActivation({
+    slug: article.slug || article._id,
+    to: href,
+    mode: "open",
+    state: hasRoute ? { initialArticle: article } : undefined,
+    onIntent: handlePrefetch
+  });
+
   return (
-    <Link to={`/articles/${article.author?.username}/${article.slug}`} className="group rounded-xl border border-ink-200 bg-white p-4 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 dark:border-ink-800 dark:bg-ink-900 dark:hover:border-accent-800">
+    <Link
+      to={href}
+      state={hasRoute ? { initialArticle: article } : undefined}
+      {...activation.linkAttributes}
+      onMouseEnter={handlePrefetch}
+      onFocus={handlePrefetch}
+      onTouchStart={handlePrefetch}
+      onPointerDown={activation.handlePointerDown}
+      onPointerUp={activation.clearActivating}
+      onPointerLeave={activation.clearActivating}
+      onPointerCancel={activation.clearActivating}
+      onKeyDown={activation.handleKeyDown}
+      onBlur={activation.clearActivating}
+      onClick={activation.handleClick}
+      className={cn(
+        "group rounded-xl border border-ink-200 bg-white p-4 transition-colors duration-150 hover:border-accent-300 dark:border-ink-800 dark:bg-ink-900 dark:hover:border-accent-800",
+        activation.isActivating && "border-accent bg-surface-active/60"
+      )}
+    >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-700 dark:bg-accent-950/40 dark:text-accent-300">
           <FileText className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <h3 className="line-clamp-2 font-semibold text-ink-950 transition-colors group-hover:text-accent-800 dark:text-ink-50 dark:group-hover:text-accent-300">{article.title}</h3>
+          <h3
+            className={cn(
+              "line-clamp-2 font-semibold text-ink-950 transition-colors group-hover:text-accent-800 dark:text-ink-50 dark:group-hover:text-accent-300",
+              activation.isActivating && "text-content-accent"
+            )}
+          >
+            {article.title}
+          </h3>
           <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-500">
             <span>{article.author?.name ?? "Upwrite writer"}</span>
             <span aria-hidden="true">-</span>

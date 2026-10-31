@@ -48,7 +48,10 @@ export default function NotificationsPage() {
   const { data: notifications = [], isLoading, error } = useNotificationsQuery({ limit: 30 });
   const [markRead] = useMarkNotificationReadMutation();
   const [markAllRead, markAllState] = useMarkAllNotificationsReadMutation();
-  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
+  const unreadCount =
+    typeof notifications.unreadCount === "number"
+      ? notifications.unreadCount
+      : notifications.filter((notification) => !notification.readAt).length;
   const rows = groupNotifications(notifications);
 
   return (

@@ -5,6 +5,9 @@ const schema = new Schema({
   text: { type: String, required: true, trim: true },
   noteCount: { type: Number, default: 0, min: 0 },
   color: { type: String, default: "yellow" },
+  prefix: String,
+  suffix: String,
+  revision: String,
   startOffset: Number,
   endOffset: Number,
   createdAt: { type: Date, default: Date.now }

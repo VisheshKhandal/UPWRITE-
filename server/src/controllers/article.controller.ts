@@ -10,7 +10,7 @@ export const articleController = {
   }),
 
   list: asyncHandler(async (req, res) => {
-    const result = await articleService.list(req);
+    const result = await articleService.list(req, req.user?.id);
     return sendSuccess(res, result.items, "Articles", 200, result.meta);
   }),
 
@@ -34,7 +34,7 @@ export const articleController = {
   }),
 
   getRelated: asyncHandler(async (req, res) => {
-    const related = await articleService.getRelated(routeParam(req, "id"));
+    const related = await articleService.getRelated(routeParam(req, "id"), req.user?.id);
     return sendSuccess(res, related, "Related articles");
   }),
 

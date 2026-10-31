@@ -30,6 +30,7 @@ const userStatsSchema = new Schema(
 const appearanceSettingsSchema = new Schema(
   {
     theme: { type: String, enum: ["light", "dark", "system"], default: "system" },
+    lineSpacing: { type: Number, min: 1.4, max: 2.2, default: 1.7 },
     fontSize: { type: String, enum: ["small", "medium", "large", "extra-large"], default: "medium" },
     readingWidth: { type: String, enum: ["narrow", "comfortable", "wide"], default: "comfortable" },
     reduceMotion: { type: Boolean, default: false },

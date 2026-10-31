@@ -28,7 +28,7 @@ export const articlesApi = baseApi.injectEndpoints({
       transformResponse: (response: ApiResponse<Article>) => unwrapResponse(response),
       providesTags: (_result, _error, id) => [{ type: "Article", id }]
     }),
-    articleBySlug: builder.query<Article, { username: string; slug: string }>({
+    articleBySlug: builder.query<Article, { username: string; slug: string; viewerId?: string }>({
       query: ({ username, slug }) => `/articles/${username}/${slug}`,
       transformResponse: (response: ApiResponse<Article>) => unwrapResponse(response),
       providesTags: (_result, _error, { username, slug }) => [{ type: "Article", id: `${username}/${slug}` }]

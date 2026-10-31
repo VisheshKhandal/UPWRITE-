@@ -1,6 +1,7 @@
 
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { motion } from "framer-motion";
 import { ArticleCard } from "../../components/article/ArticleCard";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ErrorState } from "../../components/common/ErrorState";
@@ -16,6 +17,8 @@ import { useArticlesQuery, useDeleteArticleMutation, useMyArticlesQuery } from "
 import { usePostsQuery } from "../../features/posts/postsApi";
 import { useProfileQuery } from "../../features/profiles/profilesApi";
 import { pushToast } from "../../features/ui/uiSlice";
+import { recordArticleActivation } from "../../motion/articleTransition";
+import { getLocalRevealTransition, useReducedMotionPreference } from "../../motion/system";
 import { getErrorMessage } from "../../utils/errors";
 import { formatDate } from "../../utils/formatDate";
 
@@ -24,8 +27,11 @@ type ProfileTab = "articles" | "posts" | "drafts" | "activity";
 export default function ProfilePage() {
   const { username = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
+  const reducedMotion = useReducedMotionPreference();
+  const localReveal = getLocalRevealTransition(reducedMotion);
   const isOwnProfile = currentUser?.username === username;
   const profile = useProfileQuery(username, { skip: !username });
   const articles = useArticlesQuery(
@@ -113,8 +119,7 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
     { label: "Followers", value: profile.data?.stats?.followersCount ?? 0 }
   ];
 
-  // if (profile.isLoading) return <FeedSkeleton />;
-  // if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
+  const pinnedInstanceId = featuredArticle ? `profile-pinned-${featuredArticle._id}` : "profile-pinned";
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -144,12 +149,27 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
               <p className="mt-2 text-sm text-ink-600 dark:text-ink-400">The latest published article is highlighted here until explicit pinning is available.</p>
             </div>
             {featuredArticle ? (
-              <div className="rounded-xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/70">
+              <div data-article-instance={pinnedInstanceId} className="rounded-xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/70">
                 <h3 className="text-lg font-semibold text-ink-950 dark:text-ink-50">{featuredArticle.title}</h3>
                 <p className="mt-2 text-sm text-ink-600 dark:text-ink-400 line-clamp-3">{featuredArticle.excerpt}</p>
                 <div className="mt-4 flex items-center justify-between gap-3">
                   <span className="text-xs uppercase tracking-[0.3em] text-ink-500 dark:text-ink-400">Featured</span>
-                  <Button size="sm" variant="secondary" onClick={() => navigate(`/articles/${profile.data.username}/${featuredArticle.slug}`)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      recordArticleActivation({
+                        slug: featuredArticle.slug,
+                        instanceId: pinnedInstanceId,
+                        mode: "open",
+                        sourcePath: `${location.pathname}${location.search}`,
+                        sourceScrollY: window.scrollY
+                      });
+                      navigate(`/articles/${profile.data?.username}/${featuredArticle.slug}`, {
+                        state: { initialArticle: featuredArticle }
+                      });
+                    }}
+                  >
                     View article
                   </Button>
                 </div>
@@ -218,6 +238,12 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
           <Tabs value={activeTab} onChange={setActiveTab} items={tabs} />
         </div>
 
+        <motion.div
+          key={activeTab}
+          initial={localReveal.initial}
+          animate={localReveal.animate}
+          transition={localReveal.transition}
+        >
         {activeTab === "articles" ? (
           isLoading ? (
             <FeedSkeleton />
@@ -321,6 +347,7 @@ if (profile.error || !profile.data) return <ErrorState error={profile.error} />;
             </Card>
           </div>
         )}
+        </motion.div>
       </section>
     </div>
   );

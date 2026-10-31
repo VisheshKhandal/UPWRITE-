@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -10,6 +11,15 @@ import {
 import { Input } from "../ui/Input";
 import { Textarea } from "../ui/Textarea";
 import { Button } from "../ui/Button";
+import { useBodyScrollLock, useModalFocusTrap } from "../../motion/overlays";
+import {
+  getBackdropVariants,
+  getModalVariants,
+  getPopoverVariants,
+  MOTION_DURATION,
+  MOTION_EASE,
+  useReducedMotionPreference
+} from "../../motion/system";
 import type { Article, ArticleStatus, ImageAsset, User } from "../../types/models";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { pushToast } from "../../features/ui/uiSlice";
@@ -87,12 +97,17 @@ export const ArticleEditor = ({
     scope: "selection" | "article";
     range?: { start: number; end: number };
   } | null>(null);
-  const [contentUpdating, setContentUpdating] = useState(false);
   const [draftHistory, setDraftHistory] = useState<DraftSnapshot[]>(() => loadDraftHistory(initialArticle?._id));
   const [savingVersion, setSavingVersion] = useState(false);
   const [selectionMenu, setSelectionMenu] = useState<{ text: string; start: number; end: number; x: number; y: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [askAssistant, assistantState] = useGenerateLearningResponseMutation();
+  const reducedMotion = useReducedMotionPreference();
+  useBodyScrollLock(Boolean(assistantPreview));
+  const previewModalRef = useModalFocusTrap<HTMLDivElement>(Boolean(assistantPreview), () => setAssistantPreview(null));
+  const popoverVariants = getPopoverVariants(reducedMotion, "down");
+  const backdropVariants = getBackdropVariants(reducedMotion);
+  const modalVariants = getModalVariants(reducedMotion);
   const key = draftKey(initialArticle?._id);
 
   useEffect(() => {
@@ -316,7 +331,6 @@ export const ArticleEditor = ({
     const safeStart = Math.max(0, Math.min(start, content.length));
     const safeEnd = Math.max(safeStart, Math.min(end, content.length));
     setMode("write");
-    setContentUpdating(true);
 
     if (textarea) {
       const scrollTop = textarea.scrollTop;
@@ -335,7 +349,6 @@ export const ArticleEditor = ({
     }
 
     setAssistantPreview(null);
-    window.setTimeout(() => setContentUpdating(false), 220);
   };
 
   const jumpToLine = useCallback(
@@ -502,8 +515,7 @@ export const ArticleEditor = ({
 
           <div className={cn(
             "mx-auto flex min-h-0 w-full flex-1 flex-col px-4 pb-3 pt-4 sm:px-7 lg:px-8",
-            focusMode ? "max-w-[52rem] pb-5 pt-6 sm:pt-10" : "max-w-[52rem]",
-            contentUpdating && "opacity-70 transition-opacity duration-200"
+            focusMode ? "max-w-[52rem] pb-5 pt-6 sm:pt-10" : "max-w-[52rem]"
           )}>
             <Input
               value={title}
@@ -519,28 +531,36 @@ export const ArticleEditor = ({
             />
             {titleError ? <p className="mt-2 text-sm text-red-600 dark:text-red-300">{titleError}</p> : null}
 
-            {mode === "write" ? (
-              <div className="mt-1 flex min-h-0 flex-1 overflow-hidden sm:mt-3 sm:border-t sm:border-ink-200 dark:sm:border-ink-800">
-                <Textarea
-                  ref={textareaRef}
-                  data-writing-editor
-                  value={content}
-                  onChange={(event) => setContent(event.target.value)}
-                  onMouseUp={handleTextareaMouseUp}
-                  onKeyUp={handleTextareaMouseUp}
-                  placeholder={'Start writing…\n\nType "/" for commands · Markdown supported'}
-                  className="h-full min-h-0 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-0 py-3 font-reading text-[1.08rem] leading-8 shadow-none placeholder:text-ink-400/80 focus:ring-0 dark:bg-transparent sm:py-5"
-                />
-              </div>
-            ) : (
-              <article className="reading-prose mt-3 min-h-0 flex-1 overflow-y-auto border-t border-ink-200 py-5 dark:border-ink-800">
-                <div className="pb-4">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                    {content || "Preview will appear here as you write."}
-                  </ReactMarkdown>
+            <motion.div
+              key={mode}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: reducedMotion ? 0.06 : MOTION_DURATION.fast, ease: MOTION_EASE.out }}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              {mode === "write" ? (
+                <div className="mt-1 flex min-h-0 flex-1 overflow-hidden sm:mt-3 sm:border-t sm:border-ink-200 dark:sm:border-ink-800">
+                  <Textarea
+                    ref={textareaRef}
+                    data-writing-editor
+                    value={content}
+                    onChange={(event) => setContent(event.target.value)}
+                    onMouseUp={handleTextareaMouseUp}
+                    onKeyUp={handleTextareaMouseUp}
+                    placeholder={'Start writing…\n\nType "/" for commands · Markdown supported'}
+                    className="h-full min-h-0 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-0 py-3 font-reading text-[1.08rem] leading-8 shadow-none placeholder:text-ink-400/80 focus:ring-0 dark:bg-transparent sm:py-5"
+                  />
                 </div>
-              </article>
-            )}
+              ) : (
+                <article className="reading-prose mt-3 min-h-0 flex-1 overflow-y-auto border-t border-ink-200 py-5 dark:border-ink-800">
+                  <div className="pb-4">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                      {content || "Preview will appear here as you write."}
+                    </ReactMarkdown>
+                  </div>
+                </article>
+              )}
+            </motion.div>
           </div>
 
           <ArticlePublishBar
@@ -562,123 +582,151 @@ export const ArticleEditor = ({
           />
         </section>
 
-        {!focusMode && panelOpen ? (
-          <EditorSidebar
-            tab={sidebarTab}
-            onTabChange={setSidebarTab}
-            title={title}
-            excerpt={excerpt}
-            content={content}
-            tags={tags}
-            tagInput={tagInput}
-            coverImage={coverImage}
-            coverUploading={coverUploading}
-            author={currentUser as User | null}
-            readTime={readTime}
-            assistantResponse={assistantResponse}
-            assistantLoading={assistantState.isLoading}
-            lastAssistantAction={lastAssistantAction}
-            draftHistory={draftHistory}
-            onExcerptChange={setExcerpt}
-            onTagInputChange={setTagInput}
-            onCommitTag={commitTag}
-            onRemoveTag={removeTag}
-            onCoverUpload={onCoverUpload}
-            onAskAssistant={runAssistant}
-            onSelectionAsk={runSelectionAssistant}
-            onApplyTitle={(value) => {
-              setTitle(value);
-              dispatch(pushToast({ title: "Title applied", tone: "success" }));
-            }}
-            onApplyExcerpt={(value) => {
-              setExcerpt(value);
-              dispatch(pushToast({ title: "Excerpt applied", tone: "success" }));
-            }}
-            onApplyTags={applyTags}
-            onJumpToLine={jumpToLine}
-            onRestoreSnapshot={restoreSnapshot}
-            onDeleteSnapshot={(snapshotId) => {
-              deleteDraftSnapshot(initialArticle?._id, snapshotId);
-              setDraftHistory(loadDraftHistory(initialArticle?._id));
-            }}
-            onSaveVersion={handleSaveVersion}
-            savingVersion={savingVersion}
-            open={panelOpen}
-            onClose={() => setPanelOpen(false)}
-          />
-        ) : null}
+        <EditorSidebar
+          tab={sidebarTab}
+          onTabChange={setSidebarTab}
+          title={title}
+          excerpt={excerpt}
+          content={content}
+          tags={tags}
+          tagInput={tagInput}
+          coverImage={coverImage}
+          coverUploading={coverUploading}
+          author={currentUser as User | null}
+          readTime={readTime}
+          assistantResponse={assistantResponse}
+          assistantLoading={assistantState.isLoading}
+          lastAssistantAction={lastAssistantAction}
+          draftHistory={draftHistory}
+          onExcerptChange={setExcerpt}
+          onTagInputChange={setTagInput}
+          onCommitTag={commitTag}
+          onRemoveTag={removeTag}
+          onCoverUpload={onCoverUpload}
+          onAskAssistant={runAssistant}
+          onSelectionAsk={runSelectionAssistant}
+          onApplyTitle={(value) => {
+            setTitle(value);
+            dispatch(pushToast({ title: "Title applied", tone: "success" }));
+          }}
+          onApplyExcerpt={(value) => {
+            setExcerpt(value);
+            dispatch(pushToast({ title: "Excerpt applied", tone: "success" }));
+          }}
+          onApplyTags={applyTags}
+          onJumpToLine={jumpToLine}
+          onRestoreSnapshot={restoreSnapshot}
+          onDeleteSnapshot={(snapshotId) => {
+            deleteDraftSnapshot(initialArticle?._id, snapshotId);
+            setDraftHistory(loadDraftHistory(initialArticle?._id));
+          }}
+          onSaveVersion={handleSaveVersion}
+          savingVersion={savingVersion}
+          open={!focusMode && panelOpen}
+          onClose={() => setPanelOpen(false)}
+        />
       </div>
 
-      {selectionMenu ? (
-        <div
-          data-selection-menu
-          className="fixed z-50 flex flex-wrap gap-1 rounded-2xl border border-ink-200 bg-white p-2 text-sm shadow-xl dark:border-ink-800 dark:bg-ink-950"
-          style={{ left: selectionMenu.x, top: selectionMenu.y }}
-        >
-          <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("explain-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
-            Explain
-          </Button>
-          <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("summarize-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
-            Summarize
-          </Button>
-          <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("simplify-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
-            Simplify
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={assistantState.isLoading}
-            onClick={() =>
-              runSelectionAssistant(
-                "custom",
-                selectionMenu.text,
-                "Review this selected passage for clarity and structure. Suggest improvements only; do not rewrite the full article.",
-                { start: selectionMenu.start, end: selectionMenu.end }
-              )
-            }
+      <AnimatePresence>
+        {selectionMenu ? (
+          <motion.div
+            key="editor-selection-menu"
+            data-selection-menu
+            variants={popoverVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="fixed z-50 flex flex-wrap gap-1 rounded-2xl border border-ink-200 bg-white p-2 text-sm shadow-xl dark:border-ink-800 dark:bg-ink-950"
+            style={{ left: selectionMenu.x, top: selectionMenu.y, transformOrigin: "top left" }}
           >
-            <Sparkles className="h-4 w-4" /> Ask AI
-          </Button>
-        </div>
-      ) : null}
+            <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("explain-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
+              Explain
+            </Button>
+            <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("summarize-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
+              Summarize
+            </Button>
+            <Button size="sm" variant="ghost" disabled={assistantState.isLoading} onClick={() => runSelectionAssistant("simplify-selection", selectionMenu.text, undefined, { start: selectionMenu.start, end: selectionMenu.end })}>
+              Simplify
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={assistantState.isLoading}
+              onClick={() =>
+                runSelectionAssistant(
+                  "custom",
+                  selectionMenu.text,
+                  "Review this selected passage for clarity and structure. Suggest improvements only; do not rewrite the full article.",
+                  { start: selectionMenu.start, end: selectionMenu.end }
+                )
+              }
+            >
+              <Sparkles className="h-4 w-4" /> Ask AI
+            </Button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
-      {assistantPreview ? (
-        <div className="fixed inset-0 z-[90] grid place-items-center bg-ink-950/30 px-4 py-6 backdrop-blur-[2px]">
-          <div className="ai-preview-panel w-full max-w-3xl overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl dark:border-ink-800 dark:bg-ink-950">
-            <div className="flex items-center justify-between gap-3 border-b border-ink-200 px-4 py-3 dark:border-ink-800">
-              <div className="flex min-w-0 items-center gap-2">
-                <Sparkles className="h-4 w-4 shrink-0 text-accent-600" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">{assistantPreview.title}</p>
-                  <p className="text-xs text-ink-500">
-                    {assistantPreview.scope === "selection" ? "Selected text will be replaced." : "The entire article will be replaced."}
-                  </p>
+      <AnimatePresence>
+        {assistantPreview ? (
+          <motion.div
+            key="assistant-preview-backdrop"
+            variants={backdropVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setAssistantPreview(null);
+            }}
+            className="fixed inset-0 z-[90] grid place-items-center bg-ink-950/30 px-4 py-6 backdrop-blur-[2px]"
+          >
+            <motion.div
+              ref={previewModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={assistantPreview.title}
+              tabIndex={-1}
+              variants={modalVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              className="ai-preview-panel w-full max-w-3xl overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl outline-none dark:border-ink-800 dark:bg-ink-950"
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-ink-200 px-4 py-3 dark:border-ink-800">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Sparkles className="h-4 w-4 shrink-0 text-accent-600" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">{assistantPreview.title}</p>
+                    <p className="text-xs text-ink-500">
+                      {assistantPreview.scope === "selection" ? "Selected text will be replaced." : "The entire article will be replaced."}
+                    </p>
+                  </div>
                 </div>
+                <Button type="button" variant="ghost" size="icon" aria-label="Keep original" onClick={() => setAssistantPreview(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-              <Button type="button" variant="ghost" size="icon" aria-label="Keep original" onClick={() => setAssistantPreview(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="max-h-[min(64vh,42rem)] overflow-y-auto p-4">
-              <article className="reading-prose text-base leading-7">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                  {assistantPreview.content}
-                </ReactMarkdown>
-              </article>
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-ink-200 p-3 dark:border-ink-800 sm:flex-row sm:justify-end">
-              <Button type="button" variant="secondary" onClick={() => setAssistantPreview(null)}>
-                <X className="h-4 w-4" />
-                Keep Original
-              </Button>
-              <Button type="button" onClick={replaceContentWithPreview}>
-                <Check className="h-4 w-4" />
-                {assistantPreview.scope === "selection" ? "Replace Selected Text" : "Replace Current Content"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+              <div className="max-h-[min(64vh,42rem)] overflow-y-auto p-4">
+                <article className="reading-prose text-base leading-7">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    {assistantPreview.content}
+                  </ReactMarkdown>
+                </article>
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-ink-200 p-3 dark:border-ink-800 sm:flex-row sm:justify-end">
+                <Button type="button" variant="secondary" onClick={() => setAssistantPreview(null)}>
+                  <X className="h-4 w-4" />
+                  Keep Original
+                </Button>
+                <Button type="button" onClick={replaceContentWithPreview}>
+                  <Check className="h-4 w-4" />
+                  {assistantPreview.scope === "selection" ? "Replace Selected Text" : "Replace Current Content"}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 };

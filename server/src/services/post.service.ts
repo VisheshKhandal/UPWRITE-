@@ -3,6 +3,7 @@ import { ArticleModel } from "../models/Article";
 import { UserModel } from "../models/User";
 import { AppError } from "../utils/AppError";
 import { getPagination, paginationMeta } from "../utils/pagination";
+import { attachViewerStateToContentList } from "./content.service";
 import { normalizeTags, upsertTags } from "./tag.service";
 import type { Request } from "express";
 
@@ -28,7 +29,7 @@ export const postService = {
     return post.populate("author", "name username avatar");
   },
 
-  async list(req: Request) {
+  async list(req: Request, currentUserId?: string) {
     const { page, limit, skip } = getPagination(req);
     const filter: Record<string, unknown> = { deletedAt: { $exists: false } };
 
@@ -40,9 +41,9 @@ export const postService = {
       filter.author = author._id;
     }
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       PostModel.find(filter)
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .populate("author", "name username avatar bio")
@@ -50,16 +51,18 @@ export const postService = {
       PostModel.countDocuments(filter)
     ]);
 
+    const items = await attachViewerStateToContentList("post", rawItems, currentUserId);
     return { items, meta: paginationMeta(page, limit, total) };
   },
 
-  async getById(postId: string) {
+  async getById(postId: string, currentUserId?: string) {
     const post = await PostModel.findOne({ _id: postId, deletedAt: { $exists: false } })
       .populate("author", "name username avatar bio")
       .lean();
 
     if (!post) throw new AppError("Post not found", 404);
-    return post;
+    const [enriched] = await attachViewerStateToContentList("post", [post], currentUserId);
+    return enriched;
   },
 
   async update(postId: string, authorId: string, input: Record<string, unknown>) {

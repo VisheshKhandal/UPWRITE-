@@ -1,10 +1,14 @@
 import { baseApi, unwrapResponse } from "../../services/baseApi";
 
 export interface Highlight {
+  user?: string;
   _id: string;
   article: string;
   text: string;
   color?: string;
+  prefix?: string;
+  suffix?: string;
+  revision?: string;
   noteCount?: number;
   startOffset?: number;
   endOffset?: number;

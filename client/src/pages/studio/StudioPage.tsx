@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { BarChart3, BookOpen, Layers3, PenLine } from "lucide-react";
 import { useAppSelector } from "../../app/hooks";
 import { Button } from "../../components/ui/Button";
@@ -9,18 +10,23 @@ import { useMyArticlesQuery } from "../../features/articles/articlesApi";
 import { useCreateCommentMutation, useCreatorCommentsQuery } from "../../features/comments/commentsApi";
 import { useFlashcardsQuery } from "../../features/flashcards/flashcardsApi";
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
+import { recordArticleActivation } from "../../motion/articleTransition";
+import { getLocalRevealTransition, MOTION_EASE, MOTION_EXIT_EASE, useReducedMotionPreference } from "../../motion/system";
 import type { Article } from "../../types/models";
 
 type StudioTab = "overview" | "drafts" | "published" | "comments";
 
 export default function StudioPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const initialTab = params.get("tab");
   const [tab, setTab] = useState<StudioTab>(initialTab === "drafts" || initialTab === "published" || initialTab === "comments" ? initialTab : "overview");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const user = useAppSelector((state) => state.auth.user);
+  const reducedMotion = useReducedMotionPreference();
+  const localReveal = getLocalRevealTransition(reducedMotion);
   const { data: drafts = [] } = useMyArticlesQuery({ status: "draft", limit: 8 });
   const { data: published = [] } = useMyArticlesQuery({ status: "published", limit: 8 });
   const { data: dueCards = [] } = useFlashcardsQuery({ due: true });
@@ -37,8 +43,18 @@ export default function StudioPage() {
   }, [params]);
 
   const openLastRead = () => {
-    if (lastArticleAuthor?.username && lastArticle?.slug) navigate(`/articles/${lastArticleAuthor.username}/${lastArticle.slug}`);
-    else navigate("/search");
+    if (lastArticleAuthor?.username && lastArticle?.slug) {
+      recordArticleActivation({
+        slug: lastArticle.slug,
+        instanceId: `studio-last-${lastArticle._id}`,
+        mode: "continue",
+        sourcePath: `${location.pathname}${location.search}`,
+        sourceScrollY: window.scrollY
+      });
+      navigate(`/articles/${lastArticleAuthor.username}/${lastArticle.slug}`);
+    } else {
+      navigate("/search");
+    }
   };
 
   return (
@@ -63,100 +79,136 @@ export default function StudioPage() {
         ]}
       />
 
-      {tab === "overview" ? (
-        <>
-          <section className="grid gap-4 md:grid-cols-3">
-            <MetricCard icon={<BookOpen className="h-5 w-5" />} label="Active reads" value={progress.length} onClick={openLastRead} />
-            <MetricCard icon={<Layers3 className="h-5 w-5" />} label="Cards due" value={dueCards.length} onClick={() => navigate("/review")} />
-            <MetricCard icon={<BarChart3 className="h-5 w-5" />} label="Drafts in progress" value={drafts.length} onClick={() => setTab("drafts")} />
-          </section>
+      <motion.div
+        key={tab}
+        initial={localReveal.initial}
+        animate={localReveal.animate}
+        transition={localReveal.transition}
+        className="space-y-6"
+      >
+        {tab === "overview" ? (
+          <>
+            <section className="grid gap-4 md:grid-cols-3">
+              <MetricCard icon={<BookOpen className="h-5 w-5" />} label="Active reads" value={progress.length} onClick={openLastRead} />
+              <MetricCard icon={<Layers3 className="h-5 w-5" />} label="Cards due" value={dueCards.length} onClick={() => navigate("/review")} />
+              <MetricCard icon={<BarChart3 className="h-5 w-5" />} label="Drafts in progress" value={drafts.length} onClick={() => setTab("drafts")} />
+            </section>
 
-          <section className="grid gap-5 lg:grid-cols-[1fr_22rem]">
-            <Card className="p-5">
-              <h2 className="text-lg font-semibold">Draft bench</h2>
-              <DraftList drafts={drafts} onEdit={(draftId) => navigate(`/write/${draftId}`)} />
-            </Card>
-            <Card className="p-5">
-              <h2 className="text-lg font-semibold">Today's loop</h2>
-              <div className="mt-4 space-y-3 text-sm text-ink-600 dark:text-ink-400">
-                <p>1. {drafts.length ? "Continue a draft in progress." : "Start a new article."}</p>
-                <p>2. {dueCards.length ? `Review ${dueCards.length} due flashcard${dueCards.length === 1 ? "" : "s"}.` : "No cards due - you're caught up."}</p>
-                <p>3. Write one clear learning log.</p>
-              </div>
-              <div className="mt-5 grid gap-2">
-                <Button variant="secondary" onClick={() => navigate("/review")}>Open Review</Button>
-                <Button variant="secondary" onClick={() => navigate("/library")}>Open Library</Button>
-              </div>
-            </Card>
-          </section>
-        </>
-      ) : null}
-
-      {tab === "drafts" ? (
-        <Card className="p-5">
-          <h2 className="text-lg font-semibold">Drafts</h2>
-          <DraftList drafts={drafts} onEdit={(draftId) => navigate(`/write/${draftId}`)} detailed />
-        </Card>
-      ) : null}
-
-      {tab === "published" ? (
-        <Card className="p-5">
-          <h2 className="text-lg font-semibold">Published articles</h2>
-          <div className="mt-4 space-y-3">
-            {published.length ? published.map((article) => (
-              <div key={article._id} className="grid gap-3 rounded-lg border border-ink-200 p-4 dark:border-ink-800 sm:grid-cols-[1fr_auto] sm:items-center">
-                <div>
-                  <h3 className="font-medium">{article.title}</h3>
-                  <p className="mt-1 text-sm text-ink-500">
-                    {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : "Published"} - {article.stats?.viewsCount ?? 0} views - {article.stats?.likesCount ?? 0} likes
-                  </p>
+            <section className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+              <Card className="p-5">
+                <h2 className="text-lg font-semibold">Draft bench</h2>
+                <DraftList drafts={drafts} onEdit={(draftId) => navigate(`/write/${draftId}`)} />
+              </Card>
+              <Card className="p-5">
+                <h2 className="text-lg font-semibold">Today&apos;s loop</h2>
+                <div className="mt-4 space-y-3 text-sm text-ink-600 dark:text-ink-400">
+                  <p>1. {drafts.length ? "Continue a draft in progress." : "Start a new article."}</p>
+                  <p>2. {dueCards.length ? `Review ${dueCards.length} due flashcard${dueCards.length === 1 ? "" : "s"}.` : "No cards due - you're caught up."}</p>
+                  <p>3. Write one clear learning log.</p>
                 </div>
-                <Button variant="secondary" size="sm" onClick={() => navigate(`/articles/${article.author?.username ?? user?.username}/${article.slug}`)}>View</Button>
-              </div>
-            )) : <p className="rounded-lg border border-dashed border-ink-200 p-5 text-sm text-ink-500 dark:border-ink-800">Published articles will appear here.</p>}
-          </div>
-        </Card>
-      ) : null}
-
-      {tab === "comments" ? (
-        <Card className="p-5">
-          <h2 className="text-lg font-semibold">Comments</h2>
-          <div className="mt-4 space-y-3">
-            {comments.length ? comments.map((comment) => (
-              <div key={comment._id} className="rounded-lg border border-ink-200 p-4 dark:border-ink-800">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-ink-950 dark:text-ink-50">{comment.author?.name ?? "Reader"}</p>
-                    <p className="mt-1 text-xs text-ink-500">on {comment.article?.title ?? "your article"}</p>
-                  </div>
-                  <Button size="sm" variant="secondary" onClick={() => setReplyingTo(replyingTo === comment._id ? null : comment._id)}>Reply</Button>
+                <div className="mt-5 grid gap-2">
+                  <Button variant="secondary" onClick={() => navigate("/review")}>Open Review</Button>
+                  <Button variant="secondary" onClick={() => navigate("/library")}>Open Library</Button>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-ink-700 dark:text-ink-300">{comment.body}</p>
-                {replyingTo === comment._id ? (
-                  <div className="mt-3 grid gap-2">
-                    <textarea value={replyDraft} onChange={(event) => setReplyDraft(event.target.value)} placeholder="Write a reply..." className="min-h-24 rounded-lg border border-ink-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-accent-500 dark:border-ink-800 dark:bg-ink-950" />
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => { setReplyingTo(null); setReplyDraft(""); }}>Cancel</Button>
-                      <Button
-                        size="sm"
-                        loading={replyState.isLoading}
-                        disabled={!replyDraft.trim()}
-                        onClick={async () => {
-                          await createComment({ contentType: "article", contentId: comment.contentId, body: replyDraft.trim(), parentComment: comment._id }).unwrap();
-                          setReplyingTo(null);
-                          setReplyDraft("");
-                        }}
-                      >
-                        Send reply
-                      </Button>
+              </Card>
+            </section>
+          </>
+        ) : null}
+
+        {tab === "drafts" ? (
+          <Card className="p-5">
+            <h2 className="text-lg font-semibold">Drafts</h2>
+            <DraftList drafts={drafts} onEdit={(draftId) => navigate(`/write/${draftId}`)} detailed />
+          </Card>
+        ) : null}
+
+        {tab === "published" ? (
+          <Card className="p-5">
+            <h2 className="text-lg font-semibold">Published articles</h2>
+            <div className="mt-4 space-y-3">
+              {published.length ? published.map((article) => {
+                const instanceId = `studio-published-${article._id}`;
+                return (
+                  <div key={article._id} data-article-instance={instanceId} className="grid gap-3 rounded-lg border border-ink-200 p-4 dark:border-ink-800 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div>
+                      <h3 className="font-medium">{article.title}</h3>
+                      <p className="mt-1 text-sm text-ink-500">
+                        {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : "Published"} - {article.stats?.viewsCount ?? 0} views - {article.stats?.likesCount ?? 0} likes
+                      </p>
                     </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        recordArticleActivation({
+                          slug: article.slug,
+                          instanceId,
+                          mode: "open",
+                          sourcePath: `${location.pathname}${location.search}`,
+                          sourceScrollY: window.scrollY
+                        });
+                        navigate(`/articles/${article.author?.username ?? user?.username}/${article.slug}`, {
+                          state: { initialArticle: article }
+                        });
+                      }}
+                    >
+                      View
+                    </Button>
                   </div>
-                ) : null}
-              </div>
-            )) : <p className="rounded-lg border border-dashed border-ink-200 p-5 text-sm text-ink-500 dark:border-ink-800">No unreplied comments right now.</p>}
-          </div>
-        </Card>
-      ) : null}
+                );
+              }) : <p className="rounded-lg border border-dashed border-ink-200 p-5 text-sm text-ink-500 dark:border-ink-800">Published articles will appear here.</p>}
+            </div>
+          </Card>
+        ) : null}
+
+        {tab === "comments" ? (
+          <Card className="p-5">
+            <h2 className="text-lg font-semibold">Comments</h2>
+            <div className="mt-4 space-y-3">
+              {comments.length ? comments.map((comment) => (
+                <div key={comment._id} className="rounded-lg border border-ink-200 p-4 dark:border-ink-800">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink-950 dark:text-ink-50">{comment.author?.name ?? "Reader"}</p>
+                      <p className="mt-1 text-xs text-ink-500">on {comment.article?.title ?? "your article"}</p>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => setReplyingTo(replyingTo === comment._id ? null : comment._id)}>Reply</Button>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-ink-700 dark:text-ink-300">{comment.body}</p>
+                  <AnimatePresence initial={false}>
+                    {replyingTo === comment._id ? (
+                      <motion.div
+                        key="reply-box"
+                        initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0, transition: { duration: reducedMotion ? 0.08 : 0.16, ease: MOTION_EASE } }}
+                        exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, transition: { duration: 0.12, ease: MOTION_EXIT_EASE } }}
+                        className="mt-3 grid gap-2"
+                      >
+                        <textarea value={replyDraft} onChange={(event) => setReplyDraft(event.target.value)} placeholder="Write a reply..." className="min-h-24 rounded-lg border border-ink-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-accent-500 dark:border-ink-800 dark:bg-ink-950" />
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => { setReplyingTo(null); setReplyDraft(""); }}>Cancel</Button>
+                          <Button
+                            size="sm"
+                            loading={replyState.isLoading}
+                            disabled={!replyDraft.trim()}
+                            onClick={async () => {
+                              await createComment({ contentType: "article", contentId: comment.contentId, body: replyDraft.trim(), parentComment: comment._id }).unwrap();
+                              setReplyingTo(null);
+                              setReplyDraft("");
+                            }}
+                          >
+                            Send reply
+                          </Button>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+              )) : <p className="rounded-lg border border-dashed border-ink-200 p-5 text-sm text-ink-500 dark:border-ink-800">No unreplied comments right now.</p>}
+            </div>
+          </Card>
+        ) : null}
+      </motion.div>
     </div>
   );
 }

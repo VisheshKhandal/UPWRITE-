@@ -12,6 +12,7 @@ export const appearanceSettingsSchema = z.object({
   body: z
     .object({
       theme: z.enum(["light", "dark", "system"]).optional(),
+      lineSpacing: z.number().min(1.4).max(2.2).optional(),
       fontSize: z.enum(["small", "medium", "large", "extra-large"]).optional(),
       readingWidth: z.enum(["narrow", "comfortable", "wide"]).optional(),
       reduceMotion: z.boolean().optional(),

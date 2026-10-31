@@ -1,3 +1,5 @@
+import { ArticleModel, ArticleStatus } from "../models/Article";
+import { highlightInput, noteInput, noteUpdate, progressInput } from "../validations/reader.validation";
 import { isValidObjectId } from "mongoose";
 import type { Request } from "express";
 import { FlashcardModel } from "../models/Flashcard";
@@ -17,25 +19,51 @@ const requireId = (value: string, label = "id") => {
 };
 const userArticle = (req: Request) => ({ user: req.user!.id, article: requireId(String(req.query.article ?? req.body.article), "article") });
 
+export const requireReadableArticle = async (articleId: string, userId: string) => {
+  const article = await ArticleModel.findOne({ _id: requireId(articleId, "article"), deletedAt: { $exists: false } }).select("author status").lean();
+  if (!article || (article.status !== ArticleStatus.PUBLISHED && String(article.author) !== userId)) throw new AppError("Article unavailable", 404);
+};
+const requireHighlight = async (highlight: string | undefined, article: string, user: string) => {
+  if (highlight && !await HighlightModel.exists({ _id: highlight, article, user })) throw new AppError("Highlight unavailable", 404);
+};
+
 export const highlightsController = {
-  create: asyncHandler(async (req, res) => sendSuccess(res, await HighlightModel.create({ ...req.body, user: req.user!.id }), "Highlight saved", 201)),
-  byArticle: asyncHandler(async (req, res) => sendSuccess(res, await HighlightModel.find(userArticle(req)).sort({ createdAt: -1 }).lean(), "Highlights")),
+  create: asyncHandler(async (req, res) => {
+    const input = highlightInput.parse(req.body);
+    await requireReadableArticle(input.article, req.user!.id);
+    return sendSuccess(res, await HighlightModel.create({ ...input, user: req.user!.id }), "Highlight saved", 201);
+  }),
+  byArticle: asyncHandler(async (req, res) => {
+    const filter = userArticle(req); await requireReadableArticle(filter.article, req.user!.id);
+    return sendSuccess(res, await HighlightModel.find(filter).sort({ createdAt: -1 }).lean(), "Highlights");
+  }),
   remove: asyncHandler(async (req, res) => {
     const item = await HighlightModel.findOneAndDelete({ _id: requireId(routeParam(req, "id")), user: req.user!.id });
     if (!item) throw new AppError("Highlight not found", 404);
+    await ReaderNoteModel.updateMany({ user: req.user!.id, highlight: item._id }, { $unset: { highlight: 1 } });
     return sendSuccess(res, null, "Highlight deleted");
   })
 };
 
 export const notesController = {
   create: asyncHandler(async (req, res) => {
-    const note = await ReaderNoteModel.create({ ...req.body, user: req.user!.id });
+    const input = noteInput.parse(req.body);
+    await requireReadableArticle(input.article, req.user!.id);
+    await requireHighlight(input.highlight, input.article, req.user!.id);
+    const note = await ReaderNoteModel.create({ ...input, visibility: "private", user: req.user!.id });
     if (note.highlight) await HighlightModel.findByIdAndUpdate(note.highlight, { $inc: { noteCount: 1 } });
     return sendSuccess(res, note, "Note saved", 201);
   }),
-  byArticle: asyncHandler(async (req, res) => sendSuccess(res, await ReaderNoteModel.find(userArticle(req)).sort({ createdAt: -1 }).lean(), "Notes")),
+  byArticle: asyncHandler(async (req, res) => {
+    const filter = userArticle(req); await requireReadableArticle(filter.article, req.user!.id);
+    return sendSuccess(res, await ReaderNoteModel.find(filter).sort({ createdAt: -1 }).lean(), "Notes");
+  }),
   update: asyncHandler(async (req, res) => {
-    const item = await ReaderNoteModel.findOneAndUpdate({ _id: requireId(routeParam(req, "id")), user: req.user!.id }, { $set: req.body }, { new: true, runValidators: true });
+    const input = noteUpdate.parse(req.body);
+    const existing = await ReaderNoteModel.findOne({ _id: requireId(routeParam(req, "id")), user: req.user!.id });
+    if (!existing) throw new AppError("Note not found", 404);
+    await requireReadableArticle(String(existing.article), req.user!.id);
+    const item = await ReaderNoteModel.findOneAndUpdate({ _id: existing._id, user: req.user!.id }, { $set: input }, { new: true, runValidators: true });
     if (!item) throw new AppError("Note not found", 404);
     return sendSuccess(res, item, "Note updated");
   }),
@@ -82,8 +110,46 @@ export const studyPacksController = {
 };
 
 export const readingProgressController = {
-  upsert: asyncHandler(async (req, res) => sendSuccess(res, await ReadingProgressModel.findOneAndUpdate({ user: req.user!.id, article: req.body.article }, { $set: req.body }, { upsert: true, new: true, runValidators: true }), "Reading progress synced")),
-  list: asyncHandler(async (req, res) => sendSuccess(res, await ReadingProgressModel.find({ user: req.user!.id }).sort({ updatedAt: -1 }).populate({ path: "article", populate: { path: "author", select: "name username avatar" } }).limit(100).lean(), "Reading progress"))
+  upsert: asyncHandler(async (req, res) => {
+    const input = progressInput.parse(req.body);
+    await requireReadableArticle(input.article, req.user!.id);
+    const progressPercent = input.progressPercent;
+    const updatePayload: Record<string, unknown> = { ...input };
+    if (progressPercent >= 100 && !updatePayload.completedAt) {
+      updatePayload.completedAt = new Date();
+    }
+    const identity = { user: req.user!.id, article: input.article };
+    const filter = input.clientUpdatedAt ? { ...identity, $or: [{ clientUpdatedAt: { $lte: input.clientUpdatedAt } }, { clientUpdatedAt: { $exists: false } }] } : identity;
+    let item;
+    try {
+      item = await ReadingProgressModel.findOneAndUpdate(filter, {
+        $set: updatePayload,
+        ...(progressPercent < 100 && !input.completedAt ? { $unset: { completedAt: 1 } } : {})
+      }, { upsert: true, new: true, runValidators: true });
+    } catch (error) {
+      // A unique-key collision means a newer write won the race. Never replace it.
+      if ((error as { code?: number }).code !== 11000) throw error;
+      item = await ReadingProgressModel.findOne(identity);
+    }
+    return sendSuccess(res, item, "Reading progress synced");
+  }),
+  list: asyncHandler(async (req, res) => {
+    const records = await ReadingProgressModel.find({ user: req.user!.id })
+      .sort({ updatedAt: -1 })
+      .populate({
+        path: "article",
+        match: { deletedAt: { $exists: false }, status: "published" },
+        select: "-content",
+        populate: { path: "author", select: "name username avatar" }
+      })
+      .limit(100)
+      .lean();
+    const validRecords = records.filter((record) => {
+      const article = record.article as { _id?: unknown; slug?: string; status?: string; deletedAt?: unknown } | null;
+      return Boolean(article && article._id && article.slug && !article.deletedAt && (!article.status || article.status === "published"));
+    });
+    return sendSuccess(res, validRecords, "Reading progress");
+  })
 };
 
 export const knowledgeAreasController = {

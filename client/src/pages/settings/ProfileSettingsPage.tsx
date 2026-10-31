@@ -1,7 +1,14 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { Download, KeyRound, Laptop, Lock, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
+import {
+  MOTION_DURATION,
+  MOTION_EASE,
+  setGuestReducedMotionPreference,
+  useReducedMotionPreference
+} from "../../motion/system";
 import { UploadDropzone } from "../../components/common/UploadDropzone";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -32,11 +39,12 @@ import { baseApi } from "../../services/baseApi";
 import type { AppearanceSettings, PrivacySettings } from "../../types/models";
 import { getErrorMessage } from "../../utils/errors";
 import { formatDate } from "../../utils/formatDate";
+import { clearUserScopedStorage } from "../../utils/userLocalData";
 
 type SettingsSection = "profile" | "account" | "appearance" | "security";
 
 const appearanceDefaults: AppearanceSettings = {
-  theme: "system",
+  theme: "dark",
   fontSize: "medium",
   readingWidth: "comfortable",
   reduceMotion: false,
@@ -113,11 +121,13 @@ export default function ProfileSettingsPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+  const currentTheme = useAppSelector((state) => state.ui.theme);
   const user = useAppSelector((state) => state.auth.user);
   const token = useAppSelector((state) => state.auth.accessToken);
+  const reducedMotion = useReducedMotionPreference();
   const { data: overview, isLoading: overviewLoading, isError: overviewError } = useSettingsOverviewQuery(undefined, { skip: !token });
   const effectiveUser = overview?.user ?? user;
-  const appearance = { ...appearanceDefaults, ...effectiveUser?.appearanceSettings };
+  const appearance = { ...appearanceDefaults, ...effectiveUser?.appearanceSettings, theme: currentTheme };
   const privacy = { ...privacyDefaults, ...effectiveUser?.privacySettings };
 
   const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
@@ -158,7 +168,6 @@ export default function ProfileSettingsPage() {
   useEffect(() => {
     if (overview?.user) {
       dispatch(setCurrentUser(overview.user));
-      dispatch(setTheme(overview.user.appearanceSettings?.theme ?? "system"));
       setRecoveryEmail(overview.user.securitySettings?.recoveryEmail ?? "");
     }
   }, [dispatch, overview?.user]);
@@ -211,12 +220,35 @@ export default function ProfileSettingsPage() {
   };
 
   const patchAppearance = async (patch: Partial<AppearanceSettings>) => {
+    const previousUser = effectiveUser;
+    if (typeof patch.reduceMotion === "boolean") {
+      setGuestReducedMotionPreference(patch.reduceMotion);
+    }
+    if (patch.theme) {
+      if (typeof document !== "undefined" && !reducedMotion && patch.reduceMotion !== true) {
+        document.documentElement.dataset.themeTransitioning = "true";
+        window.setTimeout(() => {
+          delete document.documentElement.dataset.themeTransitioning;
+        }, 220);
+      }
+      dispatch(setTheme(patch.theme));
+    }
+    if (effectiveUser) {
+      saveUser({
+        ...effectiveUser,
+        appearanceSettings: {
+          ...appearance,
+          ...patch
+        }
+      });
+    }
     try {
       const updated = await updateAppearance(patch).unwrap();
       saveUser(updated);
       if (patch.theme) dispatch(setTheme(patch.theme));
       dispatch(pushToast({ title: "Appearance saved", tone: "success" }));
     } catch (error) {
+      if (previousUser) saveUser(previousUser);
       toastError(error, "Could not save appearance");
     }
   };
@@ -300,6 +332,12 @@ export default function ProfileSettingsPage() {
           </Card>
 
           <Card className="p-6">
+            <motion.div
+              key={activeSection}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0.08 : MOTION_DURATION.normal, ease: MOTION_EASE.out }}
+            >
             {activeSection === "profile" ? (
               <div className="space-y-5">
                 <div>
@@ -387,8 +425,9 @@ export default function ProfileSettingsPage() {
                   if (!window.confirm("Reset all appearance settings?")) return;
                   try {
                     const updated = await resetAppearance().unwrap();
+                    setGuestReducedMotionPreference(false);
                     saveUser(updated);
-                    dispatch(setTheme(updated.appearanceSettings?.theme ?? "system"));
+                    dispatch(setTheme(updated.appearanceSettings?.theme ?? "dark"));
                     dispatch(pushToast({ title: "Appearance reset", tone: "success" }));
                   } catch (error) {
                     toastError(error, "Could not reset appearance");
@@ -427,6 +466,7 @@ export default function ProfileSettingsPage() {
                     await logoutAll().unwrap();
                     dispatch(logout());
                     dispatch(baseApi.util.resetApiState());
+                    clearUserScopedStorage();
                     navigate("/login");
                   }}>Log out all devices</Button>
                 </div>
@@ -533,6 +573,7 @@ export default function ProfileSettingsPage() {
                       await deleteAccount(deleteForm).unwrap();
                       dispatch(logout());
                       dispatch(baseApi.util.resetApiState());
+                      clearUserScopedStorage();
                       navigate("/login");
                     } catch (error) {
                       toastError(error, "Could not delete account");
@@ -541,6 +582,7 @@ export default function ProfileSettingsPage() {
                 </div>
               </div>
             ) : null}
+            </motion.div>
           </Card>
         </div>
 

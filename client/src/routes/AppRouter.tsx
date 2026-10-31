@@ -2,9 +2,11 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { RootLayout } from "../layouts/RootLayout";
 import { AuthLayout } from "../layouts/AuthLayout";
+import { ReaderLayout } from "../layouts/ReaderLayout";
 import { AppLayout } from "../layouts/AppLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { PublicOnlyRoute } from "./PublicOnlyRoute";
+import { ArticleDetailSkeleton } from "../components/article/ArticleDetailSkeleton";
 
 const LoginPage = lazy(() => import("../pages/auth/LoginPage"));
 const RegisterPage = lazy(() => import("../pages/auth/RegisterPage"));
@@ -44,11 +46,21 @@ export const AppRouter = () => (
             </Route>
           </Route>
 
+          <Route element={<ReaderLayout />}>
+            <Route
+              path="/articles/:username/:slug"
+              element={
+                <Suspense fallback={<ArticleDetailSkeleton shell />}>
+                  <ArticleDetailPage />
+                </Suspense>
+              }
+            />
+          </Route>
+
           <Route element={<AppLayout />}>
             <Route index element={<FeedPage />} />
-            <Route path="/today" element={<Navigate to="/" replace />} />
+            <Route path="/today" element={<FeedPage />} />
             <Route path="/read" element={<SearchPage />} />
-            <Route path="/articles/:username/:slug" element={<ArticleDetailPage />} />
             <Route path="/profile/:username" element={<ProfilePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/about" element={<AboutPage />} />

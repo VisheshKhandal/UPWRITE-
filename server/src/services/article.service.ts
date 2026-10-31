@@ -4,6 +4,7 @@ import { UserModel } from "../models/User";
 import { AppError } from "../utils/AppError";
 import { createExcerpt, createSlug, estimateReadingTime } from "../utils/content";
 import { getPagination, paginationMeta } from "../utils/pagination";
+import { attachViewerStateToContentList, getViewerInteractionSets } from "./content.service";
 import { normalizeTags, upsertTags } from "./tag.service";
 import type { Request } from "express";
 
@@ -51,7 +52,7 @@ export const articleService = {
     return article.populate("author", "name username avatar");
   },
 
-  async list(req: Request) {
+  async list(req: Request, currentUserId?: string) {
     const { page, limit, skip } = getPagination(req);
     const filter: Record<string, unknown> = {
       deletedAt: { $exists: false },
@@ -69,9 +70,9 @@ export const articleService = {
       filter.author = author._id;
     }
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       ArticleModel.find(filter)
-        .sort({ publishedAt: -1, createdAt: -1 })
+        .sort({ publishedAt: -1, createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .select("-content")
@@ -80,6 +81,7 @@ export const articleService = {
       ArticleModel.countDocuments(filter)
     ]);
 
+    const items = await attachViewerStateToContentList("article", rawItems, currentUserId);
     return { items, meta: paginationMeta(page, limit, total) };
   },
 
@@ -89,7 +91,7 @@ export const articleService = {
     if (req.query.status) filter.status = req.query.status;
 
     const [items, total] = await Promise.all([
-      ArticleModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
+      ArticleModel.find(filter).sort({ updatedAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
       ArticleModel.countDocuments(filter)
     ]);
 
@@ -111,22 +113,28 @@ export const articleService = {
 
     if (!article) throw new AppError("Article not found", 404);
 
-    const isFollowing =
+    const [isFollowing, interactionSets] = await Promise.all([
       currentUserId && String(author._id) !== currentUserId
-        ? await FollowModel.exists({ follower: currentUserId, following: author._id }).then(Boolean)
-        : false;
+        ? FollowModel.exists({ follower: currentUserId, following: author._id }).then(Boolean)
+        : Promise.resolve(false),
+      getViewerInteractionSets(currentUserId, [article._id])
+    ]);
 
+    const key = `article:${String(article._id)}`;
     return {
       ...article,
+      viewerLiked: interactionSets.likedKeys.has(key),
+      viewerSaved: interactionSets.savedKeys.has(key),
       author: article.author ? { ...(article.author as object), isFollowing } : article.author
     };
   },
 
   async incrementViewCount(articleId: string) {
-    await ArticleModel.findByIdAndUpdate(articleId, { $inc: { "stats.viewsCount": 1 } });
+    const article = await ArticleModel.findOneAndUpdate({ _id: articleId, status: ArticleStatus.PUBLISHED, deletedAt: { $exists: false } }, { $inc: { "stats.viewsCount": 1 } });
+    if (!article) throw new AppError("Article not found", 404);
   },
 
-  async getRelated(articleId: string) {
+  async getRelated(articleId: string, currentUserId?: string) {
     const article = await ArticleModel.findOne({
       _id: articleId,
       status: ArticleStatus.PUBLISHED,
@@ -144,13 +152,13 @@ export const articleService = {
         ...(article.tags?.length ? [{ tags: { $in: article.tags } }] : [])
       ]
     })
-      .sort({ publishedAt: -1, createdAt: -1 })
+      .sort({ publishedAt: -1, createdAt: -1, _id: -1 })
       .limit(3)
       .select("-content")
       .populate("author", "name username avatar bio")
       .lean();
 
-    return related;
+    return attachViewerStateToContentList("article", related, currentUserId);
   },
 
   async getByIdForOwner(articleId: string, authorId: string) {

@@ -1,3 +1,4 @@
+import { requireReadableArticle } from "./learning.controller";
 import { asyncHandler } from "../utils/asyncHandler";
 import { sendSuccess } from "../utils/apiResponse";
 import { generateLearningResponse } from "../services/ai.service";
@@ -11,6 +12,7 @@ export const generateAiResponse = asyncHandler(async (req, res) => {
 
 export const saveFlashcardSet = asyncHandler(async (req, res) => {
   const { articleId, articleTitle, cards } = req.body;
+  await requireReadableArticle(articleId, req.user!.id);
   const set = await FlashcardSetModel.findOneAndUpdate(
     { user: req.user!.id, articleId },
     { $set: { articleTitle, cards } },

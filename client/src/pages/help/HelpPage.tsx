@@ -5,6 +5,14 @@ import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { Textarea } from "../../components/ui/Textarea";
+import { useBodyScrollLock, useModalFocusTrap } from "../../motion/overlays";
+import {
+  getBackdropVariants,
+  getModalVariants,
+  MOTION_DURATION,
+  MOTION_EASE,
+  useReducedMotionPreference
+} from "../../motion/system";
 import { cn } from "../../utils/cn";
 import { useAppSelector } from "../../app/hooks";
 import { useCreateContactSubmissionMutation, type ContactPriority, type ContactSubmissionType } from "../../features/contact/contactApi";
@@ -72,6 +80,7 @@ export default function HelpPage() {
   const [supportMode, setSupportMode] = useState<SupportMode | null>(null);
   const theme = useAppSelector((state) => state.ui.theme);
   const user = useAppSelector((state) => state.auth.user);
+  const reducedMotion = useReducedMotionPreference();
   const filteredCategories = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return categories;
@@ -113,7 +122,7 @@ export default function HelpPage() {
         <main className="min-w-0 space-y-8">
           <section className="grid gap-4 md:grid-cols-2">
             {filteredCategories.map((item) => (
-              <Card key={item.id} id={item.id} className="scroll-mt-24 p-5 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:bg-ink-50/70 focus-within:ring-2 focus-within:ring-accent-500 dark:hover:border-accent-800 dark:hover:bg-ink-800/35">
+              <Card key={item.id} id={item.id} className="scroll-mt-24 p-5 transition-[background-color,border-color,box-shadow] duration-150 hover:border-accent-300 hover:bg-ink-50/70 focus-within:ring-2 focus-within:ring-accent-500 dark:hover:border-accent-800 dark:hover:bg-ink-800/35">
                 <item.icon className="h-5 w-5 text-accent-700 dark:text-accent-300" />
                 <h2 className="mt-4 text-lg font-semibold text-ink-950 dark:text-ink-50">{item.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-ink-500">{item.body}</p>
@@ -161,14 +170,33 @@ export default function HelpPage() {
                 const open = openFaq === index;
                 return (
                   <Card key={question} className="overflow-hidden">
-                    <button type="button" onClick={() => setOpenFaq(open ? -1 : index)} className={cn(
-                      "flex w-full items-center justify-between gap-3 p-5 text-left transition-[background-color,color] duration-150 hover:bg-ink-50 focus-visible:bg-accent-50 dark:hover:bg-ink-800/40 dark:focus-visible:bg-accent-950/25",
-                      open && "bg-accent-50/40 text-ink-950 dark:bg-accent-950/15 dark:text-ink-50"
-                    )}>
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      onClick={() => setOpenFaq(open ? -1 : index)}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 p-5 text-left transition-[background-color,color] duration-150 hover:bg-ink-50 focus-visible:bg-accent-50 dark:hover:bg-ink-800/40 dark:focus-visible:bg-accent-950/25",
+                        open && "bg-accent-50/40 text-ink-950 dark:bg-accent-950/15 dark:text-ink-50"
+                      )}
+                    >
                       <span className="font-semibold">{question}</span>
-                      <ChevronDown className={cn("h-4 w-4 shrink-0 text-ink-500 transition-transform", open && "rotate-180")} />
+                      <ChevronDown className={cn("h-4 w-4 shrink-0 text-ink-500 transition-transform duration-150", open && "rotate-180")} />
                     </button>
-                    {open ? <p className="border-t border-ink-200 px-5 py-4 text-sm leading-7 text-ink-600 dark:border-ink-800 dark:text-ink-400">{answer}</p> : null}
+                    <AnimatePresence initial={false}>
+                      {open ? (
+                        <motion.div
+                          initial={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                          animate={reducedMotion ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+                          exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                          transition={{ duration: reducedMotion ? 0.08 : MOTION_DURATION.normal, ease: MOTION_EASE.out }}
+                          className="overflow-hidden"
+                        >
+                          <p className="border-t border-ink-200 px-5 py-4 text-sm leading-7 text-ink-600 dark:border-ink-800 dark:text-ink-400">
+                            {answer}
+                          </p>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
                   </Card>
                 );
               })}
@@ -189,9 +217,9 @@ export default function HelpPage() {
                   key={action.mode}
                   type="button"
                   onClick={() => setSupportMode(action.mode)}
-                  className="group rounded-xl border border-ink-200 bg-ink-50/70 p-4 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:bg-accent-50/35 hover:shadow-panel focus-visible:ring-2 focus-visible:ring-accent-500 dark:border-ink-800 dark:bg-ink-950/45 dark:hover:border-accent-800 dark:hover:bg-accent-950/12"
+                  className="group rounded-xl border border-ink-200 bg-ink-50/70 p-4 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-accent-300 hover:bg-accent-50/35 hover:shadow-panel focus-visible:ring-2 focus-visible:ring-accent-500 dark:border-ink-800 dark:bg-ink-950/45 dark:hover:border-accent-800 dark:hover:bg-accent-950/12"
                 >
-                  <action.icon className="h-5 w-5 text-accent-700 transition-transform duration-200 group-hover:scale-105 dark:text-accent-300" />
+                  <action.icon className="h-5 w-5 text-accent-700 dark:text-accent-300" />
                   <p className="mt-4 font-semibold">{action.title}</p>
                   <p className="mt-2 text-sm leading-6 text-ink-500">{action.body}</p>
                 </button>
@@ -218,6 +246,12 @@ function SupportModal({
   onClose: () => void;
   technicalContext: ReturnType<typeof getTechnicalContext>;
 }) {
+  const reducedMotion = useReducedMotionPreference();
+  const isOpen = Boolean(mode);
+  useBodyScrollLock(isOpen);
+  const dialogRef = useModalFocusTrap<HTMLDivElement>(isOpen, onClose);
+  const backdropVariants = getBackdropVariants(reducedMotion);
+  const modalVariants = getModalVariants(reducedMotion);
   const [submitted, setSubmitted] = useState(false);
   const [rating, setRating] = useState(0);
   const [form, setForm] = useState({
@@ -252,19 +286,13 @@ function SupportModal({
       priority: "medium",
       screenshot: null
     });
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, onClose]);
+  }, [mode]);
 
-  if (!mode) return null;
-
-  const action = supportActions.find((item) => item.mode === mode);
+  const action = mode ? supportActions.find((item) => item.mode === mode) : undefined;
   const Icon = action?.icon ?? MessageSquare;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!mode) return;
     setError("");
 
     try {
@@ -292,23 +320,27 @@ function SupportModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[70] grid place-items-center px-4 py-6" role="dialog" aria-modal="true" aria-label={action?.title ?? "Contact Upwrite"}>
-        <motion.button
-          type="button"
-          className="absolute inset-0 bg-ink-950/55 backdrop-blur-sm"
-          aria-label="Close contact modal"
-          onClick={onClose}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        />
-        <motion.div
-          className="relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-ink-200 bg-white p-5 shadow-2xl dark:border-ink-800 dark:bg-ink-950"
-          initial={{ opacity: 0, y: 16, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 12, scale: 0.98 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-        >
+      {mode ? (
+        <div className="fixed inset-0 z-[70] grid place-items-center px-4 py-6" role="dialog" aria-modal="true" aria-label={action?.title ?? "Contact Upwrite"}>
+          <motion.button
+            type="button"
+            className="absolute inset-0 bg-ink-950/55 backdrop-blur-sm"
+            aria-label="Close contact modal"
+            onClick={onClose}
+            variants={backdropVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          />
+          <motion.div
+            ref={dialogRef}
+            tabIndex={-1}
+            className="relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-ink-200 bg-white p-5 shadow-2xl outline-none dark:border-ink-800 dark:bg-ink-950"
+            variants={modalVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
           <div className="flex items-start justify-between gap-4 border-b border-ink-200 pb-4 dark:border-ink-800">
             <div className="flex items-start gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-300">
@@ -427,6 +459,7 @@ function SupportModal({
           )}
         </motion.div>
       </div>
+      ) : null}
     </AnimatePresence>
   );
 }

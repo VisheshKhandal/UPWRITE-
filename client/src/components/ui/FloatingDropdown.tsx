@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { getPopoverVariants, useReducedMotionPreference } from "../../motion/system";
 import { cn } from "../../utils/cn";
 
 interface Position {
@@ -34,6 +35,7 @@ export const FloatingDropdown = ({
   align = "right",
   minWidth = "min-w-52"
 }: FloatingDropdownProps) => {
+  const reducedMotion = useReducedMotionPreference();
   const [position, setPosition] = useState<Position>({ x: 0, y: 0, direction: "down" });
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [contentHeight, setContentHeight] = useState<number | null>(null);
@@ -53,7 +55,6 @@ export const FloatingDropdown = ({
       }
     };
 
-    // Use capture phase to catch clicks before other listeners
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [isOpen, onClose, triggerRef]);
@@ -71,10 +72,10 @@ export const FloatingDropdown = ({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, triggerRef]);
 
-  // Calculate position with viewport awareness
-  useEffect(() => {
+  // Calculate position synchronously before paint
+  useLayoutEffect(() => {
     if (!isOpen || !triggerRef.current) return;
 
     const calculatePosition = () => {
@@ -87,23 +88,17 @@ export const FloatingDropdown = ({
       const viewportMargin = viewportWidth < MOBILE_BREAKPOINT ? 8 : VIEWPORT_MARGIN;
       const dropdownWidth = contentRef.current?.offsetWidth || 208;
 
-      // Get content dimensions (use stored height or estimate)
-      const estimatedHeight = Math.min(contentHeight || 300, viewportHeight - viewportMargin * 2);
-
-      // Calculate available space
+      const estimatedHeight = Math.min(contentHeight || 260, viewportHeight - viewportMargin * 2);
       const spaceBelow = viewportHeight - triggerRect.bottom - DROPDOWN_OFFSET;
       const spaceAbove = triggerRect.top - DROPDOWN_OFFSET;
 
-      // Determine if we should open downward or upward
       const openDownward = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove;
       const direction = openDownward ? "down" : "up";
 
-      // Calculate Y position
       let y = openDownward
         ? triggerRect.bottom + DROPDOWN_OFFSET
         : triggerRect.top - estimatedHeight - DROPDOWN_OFFSET;
 
-      // Calculate X position based on alignment
       let x: number;
       switch (align) {
         case "right":
@@ -123,41 +118,51 @@ export const FloatingDropdown = ({
           break;
       }
 
-      // Adjust Y if dropdown would overflow viewport
       if (openDownward) {
         if (y + estimatedHeight > viewportHeight - viewportMargin) {
           y = viewportHeight - estimatedHeight - viewportMargin;
         }
-      } else {
-        if (y < viewportMargin) {
-          y = viewportMargin;
-        }
+      } else if (y < viewportMargin) {
+        y = viewportMargin;
       }
 
-      setPosition({ x, y, direction });
+      setPosition({ x: Math.round(x), y: Math.round(y), direction });
     };
 
-    // Use a small delay to ensure content is rendered and measured
-    const timer = window.setTimeout(calculatePosition, 0);
+    calculatePosition();
+    const frame = window.requestAnimationFrame(calculatePosition);
     window.addEventListener("resize", calculatePosition);
     window.addEventListener("scroll", calculatePosition, true);
 
     return () => {
-      clearTimeout(timer);
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", calculatePosition);
       window.removeEventListener("scroll", calculatePosition, true);
     };
   }, [isOpen, triggerRef, contentHeight, align]);
 
-  // Measure content height after initial render
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (contentRef.current && isOpen) {
       const height = contentRef.current.offsetHeight;
-      if (height > 0) {
+      if (height > 0 && height !== contentHeight) {
         setContentHeight(height);
       }
     }
-  }, [isOpen, children]);
+  }, [isOpen, children, contentHeight]);
+
+  const popoverVariants = getPopoverVariants(reducedMotion, position.direction);
+  const transformOrigin =
+    position.direction === "down"
+      ? align === "left"
+        ? "top left"
+        : align === "center"
+          ? "top center"
+          : "top right"
+      : align === "left"
+        ? "bottom left"
+        : align === "center"
+          ? "bottom center"
+          : "bottom right";
 
   return createPortal(
     <AnimatePresence>
@@ -165,7 +170,7 @@ export const FloatingDropdown = ({
         <motion.div
           ref={contentRef}
           className={cn(
-            "fixed z-[9999] rounded-xl border border-ink-200 bg-white shadow-2xl outline-none dark:border-ink-800 dark:bg-ink-950",
+            "surface-elevated fixed z-[9999] rounded-lg outline-none",
             minWidth,
             contentClassName
           )}
@@ -175,31 +180,15 @@ export const FloatingDropdown = ({
             left: `${position.x}px`,
             top: `${position.y}px`,
             maxHeight: "calc(100vh - 32px)",
-            overflow: "auto"
+            overflow: "auto",
+            transformOrigin
           }}
-          initial={{
-            opacity: 0,
-            scale: 0.95,
-            y: position.direction === "down" ? -8 : 8
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            y: 0
-          }}
-          exit={{
-            opacity: 0,
-            scale: 0.95,
-            y: position.direction === "down" ? -8 : 8
-          }}
-          transition={{
-            duration: 0.15,
-            ease: "easeOut"
-          }}
+          variants={popoverVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
         >
-          <div className={cn("p-1.5", className)}>
-            {children}
-          </div>
+          <div className={cn("p-1.5", className)}>{children}</div>
         </motion.div>
       )}
     </AnimatePresence>,

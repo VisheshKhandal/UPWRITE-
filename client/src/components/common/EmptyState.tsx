@@ -9,8 +9,8 @@ interface EmptyStateProps {
 
 export const EmptyState = ({ title, description, action }: EmptyStateProps) => (
   <Card className="p-8 text-center">
-    <h3 className="text-lg font-semibold text-ink-950 dark:text-ink-50">{title}</h3>
-    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-600 dark:text-ink-400">{description}</p>
+    <h3 className="type-section-title">{title}</h3>
+    <p className="type-body mx-auto mt-2 max-w-md">{description}</p>
     {action ? <div className="mt-5">{action}</div> : null}
   </Card>
 );

@@ -1,270 +1,524 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Bookmark, ChevronRight, Compass, FileText, PenLine, PlayCircle } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { useAppSelector } from "../../app/hooks";
-import { ArticleCard } from "../../components/article/ArticleCard";
 import { CommentThread } from "../../components/article/CommentThread";
+import { AuthPrompt } from "../../components/auth/AuthPrompt";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ErrorState } from "../../components/common/ErrorState";
 import { PostCard } from "../../components/feed/PostCard";
+import { ArticleRow } from "../../components/today/ArticleRow";
+import { FeedPagination } from "../../components/today/FeedPagination";
+import { CompactPersonalStrip, PersonalRail } from "../../components/today/PersonalRail";
+import {
+  parseFeedSearchParams,
+  selectContinueReading,
+  selectLatestDraft,
+  updateFeedSearchParams,
+  type TodayContentFilter,
+  type TodayFeedSort
+} from "../../components/today/todayUtils";
 import { Button } from "../../components/ui/Button";
-import { SafeImage } from "../../components/ui/SafeImage";
-import { FeedSkeleton } from "../../components/ui/Skeleton";
-import { Tabs } from "../../components/ui/Tabs";
 import { useMyArticlesQuery } from "../../features/articles/articlesApi";
 import { useLatestFeedQuery, useTrendingFeedQuery } from "../../features/feed/feedApi";
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
-import type { Article, Post } from "../../types/models";
-import { getImageSrc } from "../../utils/image";
-import { AuthPrompt } from "../../components/auth/AuthPrompt";
+import {
+  getLocalRevealTransition,
+  MOTION_EASE,
+  MOTION_EXIT_EASE,
+  scrollWindowWithMotionPreference,
+  useReducedMotionPreference
+} from "../../motion/system";
+import type { Article, ContentType, Post } from "../../types/models";
+import { cn } from "../../utils/cn";
 
-const FEED_PAGE_SIZE = 4;
-const shortcutCardClass =
-  "group rounded-xl border border-ink-200 bg-white p-4 text-left shadow-panel transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-soft focus-visible:ring-2 focus-visible:ring-accent-500 dark:border-ink-800 dark:bg-ink-900 dark:hover:border-accent-800";
+const FEED_PAGE_SIZE = 6;
+const RAIL_BREAKPOINT_QUERY = "(min-width: 1160px)";
 
-type SummaryCardProps = {
-  icon: typeof Compass;
-  label: string;
-  title: string;
-  description: string;
-  onClick: () => void;
+const useWideDesktopRail = () => {
+  const [matches, setMatches] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia(RAIL_BREAKPOINT_QUERY).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia(RAIL_BREAKPOINT_QUERY);
+    const update = () => setMatches(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return matches;
 };
 
-const SummaryCard = ({ icon: Icon, label, title, description, onClick }: SummaryCardProps) => (
-  <button type="button" onClick={onClick} className={shortcutCardClass}>
-    <div className="flex h-full flex-col">
-      <div className="flex items-start justify-between gap-3">
-        <Icon className="h-5 w-5 text-accent-700 transition-transform group-hover:scale-105 dark:text-accent-300" />
-        <ChevronRight className="h-4 w-4 text-ink-400 opacity-0 transition-opacity group-hover:opacity-100" />
+const ArticleRowSkeletonList = () => (
+  <div className="divide-y divide-border-subtle" aria-busy="true" aria-label="Loading feed">
+    {[0, 1, 2, 3].map((index) => (
+      <div key={index} className="flex items-start justify-between gap-4 py-5 first:pt-2">
+        <div className="min-w-0 flex-1 space-y-2.5">
+          <div className="h-3.5 w-44 animate-pulse rounded-xs bg-surface-subtle" />
+          <div className="h-5 w-4/5 animate-pulse rounded-xs bg-surface-subtle" />
+          <div className="h-4 w-full animate-pulse rounded-xs bg-surface-subtle" />
+          <div className="h-4 w-2/3 animate-pulse rounded-xs bg-surface-subtle" />
+          <div className="flex items-center gap-2 pt-1">
+            <div className="h-5 w-16 animate-pulse rounded-xs bg-surface-subtle" />
+            <div className="h-5 w-14 animate-pulse rounded-xs bg-surface-subtle" />
+          </div>
+        </div>
+        <div className="hidden aspect-[16/10] w-36 shrink-0 animate-pulse rounded-md bg-surface-subtle sm:block" />
       </div>
-      <p className="mt-5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-500">{label}</p>
-      <p className="mt-2 text-base font-semibold leading-snug text-ink-950 dark:text-ink-50">{title}</p>
-      <p className="mt-2 line-clamp-3 text-xs leading-5 text-ink-500">{description}</p>
-    </div>
-  </button>
+    ))}
+  </div>
 );
 
 export default function FeedPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"latest" | "trending">("latest");
-  const [contentFilter, setContentFilter] = useState<"articles" | "logs">("articles");
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isWideDesktop = useWideDesktopRail();
+  const user = useAppSelector((state) => state.auth.user);
+  const isAuthenticated = Boolean(user);
+  const reducedMotion = useReducedMotionPreference();
+  const localReveal = getLocalRevealTransition(reducedMotion);
+
+  const { contentFilter, feedSort, page, apiType } = useMemo(
+    () => parseFeedSearchParams(searchParams),
+    [searchParams]
+  );
+
   const [commentTarget, setCommentTarget] = useState<string | null>(null);
-  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
+  const [authPrompt, setAuthPrompt] = useState<{
+    open: boolean;
+    message: string;
+    action?: string;
+    targetPath?: string;
+    contentType?: ContentType;
+    contentId?: string;
+  }>({
     open: false,
     message: "Sign in to continue."
   });
-  const user = useAppSelector((state) => state.auth.user);
-  const latest = useLatestFeedQuery({ page, limit: FEED_PAGE_SIZE }, { skip: tab !== "latest" });
-  const trending = useTrendingFeedQuery({ page, limit: FEED_PAGE_SIZE }, { skip: tab !== "trending" });
-  const liveQueryOptions = { skip: !user, pollingInterval: 30000, refetchOnFocus: true, refetchOnReconnect: true, refetchOnMountOrArgChange: true };
-  const { data: progress = [], isLoading: progressLoading } = useReadingProgressQuery(undefined, liveQueryOptions);
-  const { data: drafts = [], isLoading: draftsLoading } = useMyArticlesQuery({ status: "draft", limit: 20 }, liveQueryOptions);
-  const query = tab === "latest" ? latest : trending;
-  const feedItems = query.data?.items ?? [];
-  const articleItems = feedItems.filter((feedItem) => feedItem.type === "article");
-  const logItems = feedItems.filter((feedItem) => feedItem.type === "post");
-  const visibleFeedItems = contentFilter === "articles" ? articleItems : logItems;
-  const meta = query.data?.meta;
+
+  const feedQueryArgs = useMemo(
+    () => ({ page, limit: FEED_PAGE_SIZE, type: apiType }),
+    [page, apiType]
+  );
+
+  const latest = useLatestFeedQuery(feedQueryArgs, { skip: feedSort !== "latest" });
+  const trending = useTrendingFeedQuery(feedQueryArgs, { skip: feedSort !== "trending" });
+  const activeQuery = feedSort === "latest" ? latest : trending;
+
+  const liveQueryOptions = useMemo(
+    () => ({
+      skip: !isAuthenticated,
+      pollingInterval: 30000,
+      refetchOnFocus: true,
+      refetchOnReconnect: true,
+      refetchOnMountOrArgChange: true
+    }),
+    [isAuthenticated]
+  );
+
+  const {
+    data: progressRecords = [],
+    isLoading: progressLoading,
+    isError: progressError,
+    refetch: refetchProgress
+  } = useReadingProgressQuery(undefined, liveQueryOptions);
+
+  const {
+    data: draftArticles = [],
+    isLoading: draftsLoading,
+    isError: draftsError,
+    refetch: refetchDrafts
+  } = useMyArticlesQuery({ status: "draft", limit: 20 }, liveQueryOptions);
+
+  const continueReadingItem = useMemo(
+    () => selectContinueReading(progressRecords),
+    [progressRecords]
+  );
+
+  const latestDraft = useMemo(
+    () => selectLatestDraft(draftArticles),
+    [draftArticles]
+  );
+
+  // Use currentData so switching contentFilter never shows stale items under the wrong heading
+  const activeFeedData = activeQuery.currentData;
+  const rawItems = activeFeedData?.items ?? [];
+  const visibleFeedItems = useMemo(
+    () => rawItems.filter((item) => item.type === apiType),
+    [rawItems, apiType]
+  );
+  const meta = activeFeedData?.meta;
   const totalPages = meta?.pages ?? 0;
-  const pageNumbers = useMemo(() => Array.from({ length: totalPages }, (_, index) => index + 1), [totalPages]);
+  const isInitialFeedLoading = !activeFeedData && activeQuery.isFetching;
 
-  const lastProgress = progress[0];
-  const lastArticle = typeof lastProgress?.article === "object" ? lastProgress.article : null;
-  const lastArticleAuthor = typeof lastArticle?.author === "object" ? lastArticle.author : null;
-  const latestDraft = drafts[0];
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    const prefix = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : hour < 21 ? "Good evening" : "Good night";
-    return `${prefix}, ${user?.name?.split(" ")[0] ?? user?.username ?? "there"}.`;
-  }, [user?.name, user?.username]);
-  const inProgressUrl = lastArticle && lastArticleAuthor?.username ? `/articles/${lastArticleAuthor.username}/${lastArticle.slug}` : "";
-  const readingPercent = lastProgress?.progressPercent ? Math.min(100, Math.max(0, Math.round(lastProgress.progressPercent))) : 0;
-  const contextualMessage = useMemo(() => {
-    if (lastArticle?.title && readingPercent) return `Your last article is ${readingPercent}% complete.`;
-    if (latestDraft?.title) return `Finish "${latestDraft.title}" from your drafts.`;
-    return "Pick a useful read, continue writing, or open your library.";
-  }, [lastArticle?.title, latestDraft?.title, readingPercent]);
-
+  // Clamp out-of-range page parameter cleanly once metadata is known
   useEffect(() => {
-    setPage(1);
-    setCommentTarget(null);
-  }, [tab]);
-
-  useEffect(() => {
-    if (totalPages && page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  const feedLabel = contentFilter === "articles" ? "articles" : "learning logs";
-  const requireAuthAction = (message: string, action: string, callback: () => void) => {
-    if (user) {
-      callback();
-      return;
+    if (totalPages > 0 && page > totalPages) {
+      setSearchParams(updateFeedSearchParams(searchParams, { page: totalPages }), {
+        replace: true
+      });
     }
-    setAuthPrompt({ open: true, message, action });
+  }, [page, searchParams, setSearchParams, totalPages]);
+
+  useEffect(() => {
+    setCommentTarget(null);
+  }, [contentFilter, feedSort, page]);
+
+  const greetingLine = useMemo(() => {
+    const firstName = user?.name?.trim().split(/\s+/)[0] || user?.username?.trim();
+    if (!firstName) return null;
+    const hour = new Date().getHours();
+    const prefix =
+      hour < 12
+        ? "Good morning"
+        : hour < 17
+          ? "Good afternoon"
+          : hour < 21
+            ? "Good evening"
+            : "Good night";
+    return `${prefix}, ${firstName}`;
+  }, [user?.name, user?.username]);
+
+  const handleContentFilterChange = (nextContent: TodayContentFilter) => {
+    if (nextContent === contentFilter) return;
+    setSearchParams(updateFeedSearchParams(searchParams, { contentFilter: nextContent }), {
+      replace: false
+    });
+  };
+
+  const handleFeedSortChange = (nextSort: TodayFeedSort) => {
+    if (nextSort === feedSort) return;
+    setSearchParams(updateFeedSearchParams(searchParams, { feedSort: nextSort }), {
+      replace: false
+    });
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage === page) return;
+    setSearchParams(updateFeedSearchParams(searchParams, { page: nextPage }), {
+      replace: false
+    });
+    scrollWindowWithMotionPreference({ top: 0 });
+  };
+
+  const openAuthPromptForPath = (targetPath: string, message: string) => {
+    setAuthPrompt({
+      open: true,
+      message,
+      action: "route",
+      targetPath
+    });
+  };
+
+  const workspaceProps = {
+    continueReadingItem,
+    latestDraft,
+    isAuthenticated,
+    progressLoading,
+    progressError,
+    onRetryProgress: () => void refetchProgress(),
+    draftsLoading,
+    draftsError,
+    onRetryDrafts: () => void refetchDrafts(),
+    onRequireAuth: openAuthPromptForPath
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <section className="rounded-2xl border border-ink-200 bg-white/70 p-5 shadow-panel dark:border-ink-800 dark:bg-ink-900/45 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">Today</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink-950 dark:text-ink-50 sm:text-4xl">{greeting}</h1>
-            <p className="mt-2 text-sm leading-6 text-ink-500">{contextualMessage}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => (inProgressUrl ? navigate(inProgressUrl) : navigate("/search"))}>
-              <PlayCircle className="h-4 w-4" />
-              {inProgressUrl ? "Resume reading" : "Find a read"}
-            </Button>
-            <Button variant="secondary" onClick={() => requireAuthAction("Sign in to publish your article.", "route", () => navigate("/write"))}>Write draft</Button>
-          </div>
-        </div>
-      </section>
-
-      <section aria-label="Next action" className="space-y-3">
-        <div className={`${shortcutCardClass} p-0`}>
-          {progressLoading ? (
-            <div className="grid gap-4 p-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:p-5">
-              <div className="h-28 animate-pulse rounded-lg bg-ink-100 dark:bg-ink-800" />
-              <div className="space-y-3 py-1">
-                <div className="h-3 w-32 animate-pulse rounded bg-ink-100 dark:bg-ink-800" />
-                <div className="h-5 w-2/3 animate-pulse rounded bg-ink-100 dark:bg-ink-800" />
-                <div className="h-3 w-full animate-pulse rounded bg-ink-100 dark:bg-ink-800" />
-                <div className="h-9 w-36 animate-pulse rounded-lg bg-ink-100 dark:bg-ink-800" />
-              </div>
-            </div>
-          ) : lastArticle && inProgressUrl ? (
-            <button type="button" onClick={() => navigate(inProgressUrl)} className="grid w-full gap-4 p-4 text-left sm:grid-cols-[9rem_minmax(0,1fr)] sm:p-5">
-              <SafeImage src={getImageSrc(lastArticle.coverImage)} alt={lastArticle.title} className="aspect-[4/3] w-full rounded-lg object-cover sm:h-full" fallbackLabel="Read" />
-              <div className="flex min-w-0 flex-col justify-center">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-accent-700 dark:text-accent-300">
-                    <PlayCircle className="h-3.5 w-3.5" />
-                    Continue Reading
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-ink-400 opacity-0 transition-opacity group-hover:opacity-100" />
-                </div>
-                <p className="mt-2 line-clamp-2 text-xl font-semibold leading-tight text-ink-950 dark:text-ink-50">{lastArticle.title}</p>
-                <p className="mt-2 text-sm leading-6 text-ink-500">Resume exactly where you left off.</p>
-                {readingPercent > 0 ? (
-                  <div className="mt-4 max-w-xl">
-                    <div className="h-1.5 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
-                      <div className="h-full rounded-full bg-accent-600 transition-[width] duration-300 dark:bg-accent-400" style={{ width: `${readingPercent}%` }} />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </button>
+    <div className="mx-auto w-full max-w-[74rem]">
+      {/* Modest Today page header */}
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-subtle pb-3.5">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-content-primary sm:text-[1.75rem]">
+            Today
+          </h1>
+          {greetingLine ? (
+            <p className="text-sm text-content-muted">{greetingLine}</p>
           ) : (
-            <button type="button" onClick={() => navigate("/search")} className="grid w-full gap-4 p-4 text-left sm:grid-cols-[9rem_minmax(0,1fr)] sm:p-5">
-              <div className="grid aspect-[4/3] place-items-center rounded-lg border border-accent-200 bg-accent-50 text-accent-700 dark:border-accent-900 dark:bg-accent-950/35 dark:text-accent-300">
-                <Compass className="h-8 w-8" />
-              </div>
-              <div className="flex min-w-0 flex-col justify-center">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-accent-700 dark:text-accent-300">
-                  <PlayCircle className="h-3.5 w-3.5" />
-                  Start Reading
-                </div>
-                <p className="mt-2 text-xl font-semibold leading-tight text-ink-950 dark:text-ink-50">Discover high-quality articles curated for you.</p>
-                <p className="mt-2 text-sm leading-6 text-ink-500">Build momentum with one useful read, then save ideas worth returning to.</p>
-                <span className="mt-4 inline-flex w-max items-center gap-1 rounded-lg bg-ink-950 px-3 py-2 text-sm font-medium text-white dark:bg-ink-100 dark:text-ink-950">
-                  Explore articles <ChevronRight className="h-4 w-4" />
-                </span>
-              </div>
-            </button>
+            <p className="text-sm text-content-muted">
+              Focused reading and writing without noise.
+            </p>
           )}
         </div>
+      </header>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <SummaryCard icon={Bookmark} label="Library" title="Open saved knowledge" onClick={() => requireAuthAction("Sign in to build your learning library.", "route", () => navigate("/library"))} description="Collect articles, notes, and ideas you want to revisit." />
-          <SummaryCard icon={FileText} label="Drafts" title={latestDraft ? "Continue writing your ideas" : "Shape your first draft"} onClick={() => requireAuthAction("Sign in to publish your article.", "route", () => navigate("/studio?tab=drafts"))} description={draftsLoading ? "Opening your writing workspace." : latestDraft ? latestDraft.title || "Pick up an unfinished draft." : "Start with a rough thought and refine it over time."} />
-          <SummaryCard icon={PenLine} label="Learning logs" title="Capture today's learning" onClick={() => requireAuthAction("Sign in to write a learning log.", "route", () => navigate("/write"))} description="Record a quick update, reflection, or idea while it is still fresh." />
-        </div>
-      </section>
+      {/* Variant B two-column layout on wide desktop (>=1160px), collapsing early to single column below 1160px */}
+      <div className="mt-5 flex flex-col gap-6 min-[1160px]:flex-row min-[1160px]:items-start min-[1160px]:gap-8">
+        {/* Compact personal workspace strip on <1160px (mounted only when rail is collapsed) */}
+        {!isWideDesktop ? <CompactPersonalStrip {...workspaceProps} /> : null}
 
-      <section className="space-y-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-ink-200 bg-white p-4 shadow-panel dark:border-ink-800 dark:bg-ink-900 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-700 dark:text-accent-300">Recent reads</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink-950 dark:text-ink-50">Latest {feedLabel}</h2>
-            <p className="mt-1 text-sm leading-6 text-ink-500">Articles and learning logs stay separated so your workspace remains easy to scan.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Tabs value={tab} onChange={(nextTab) => setTab(nextTab)} items={[{ value: "latest", label: "Latest" }, { value: "trending", label: "Featured" }]} />
-            <div className="flex rounded-lg border border-ink-200 bg-ink-100 p-1 dark:border-ink-800 dark:bg-ink-950">
-              <Button size="sm" variant={contentFilter === "articles" ? "primary" : "ghost"} onClick={() => setContentFilter("articles")} aria-pressed={contentFilter === "articles"}>Articles</Button>
-              <Button size="sm" variant={contentFilter === "logs" ? "primary" : "ghost"} onClick={() => setContentFilter("logs")} aria-pressed={contentFilter === "logs"}>Logs</Button>
+        {/* Primary reading feed column */}
+        <section
+          aria-labelledby="today-feed-heading"
+          className="min-w-0 flex-1"
+        >
+          {/* Integrated feed filter bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-subtle pb-3">
+            <div className="flex items-center gap-2">
+              <h2 id="today-feed-heading" className="sr-only">
+                {contentFilter === "articles" ? "Articles feed" : "Learning logs feed"}
+              </h2>
+              <div
+                role="group"
+                aria-label="Content type"
+                className="inline-flex rounded-md border border-subtle bg-surface-subtle p-0.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleContentFilterChange("articles")}
+                  aria-pressed={contentFilter === "articles"}
+                  className={cn(
+                    "relative isolate h-8 rounded-sm px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
+                    contentFilter === "articles"
+                      ? "text-content-primary"
+                      : "text-content-muted hover:text-content-primary"
+                  )}
+                >
+                  {contentFilter === "articles" ? (
+                    <motion.span
+                      layoutId={reducedMotion ? undefined : "today-content-filter-pill"}
+                      transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: MOTION_EASE }}
+                      className="pointer-events-none absolute inset-0 rounded-sm bg-surface-elevated shadow-xs"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <span className="relative z-10">Articles</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleContentFilterChange("logs")}
+                  aria-pressed={contentFilter === "logs"}
+                  className={cn(
+                    "relative isolate h-8 rounded-sm px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
+                    contentFilter === "logs"
+                      ? "text-content-primary"
+                      : "text-content-muted hover:text-content-primary"
+                  )}
+                >
+                  {contentFilter === "logs" ? (
+                    <motion.span
+                      layoutId={reducedMotion ? undefined : "today-content-filter-pill"}
+                      transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: MOTION_EASE }}
+                      className="pointer-events-none absolute inset-0 rounded-sm bg-surface-elevated shadow-xs"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <span className="relative z-10">Learning logs</span>
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {query.isLoading ? <FeedSkeleton /> : null}
-      {query.error ? <ErrorState error={query.error} /> : null}
-      {!query.isLoading && !query.error && !visibleFeedItems.length ? (
-        <EmptyState
-          title={contentFilter === "articles" ? "No articles yet" : "No learning logs yet"}
-          description={contentFilter === "articles" ? "Published articles from your network will appear here." : "Learning logs are separated from reading content for a calmer Today page."}
-          action={contentFilter === "articles" ? <Button onClick={() => navigate("/search")}>Browse Articles</Button> : <Button onClick={() => navigate("/write")}>Write</Button>}
-        />
-      ) : null}
-
-      <div className={`space-y-5 transition-opacity duration-200 ${query.isFetching && !query.isLoading ? "opacity-70" : "opacity-100"}`} aria-busy={query.isFetching}>
-        {visibleFeedItems.map((feedItem) =>
-          feedItem.type === "article" ? (
-            <ArticleCard key={`article-${feedItem.item._id}`} article={feedItem.item as Article} />
-          ) : (
-            <div key={`post-${feedItem.item._id}`} className="space-y-3">
-              <PostCard
-                post={feedItem.item as Post}
-                onOpenComments={() =>
-                  requireAuthAction("Sign in to comment on this learning log.", "comment", () =>
-                    setCommentTarget(commentTarget === feedItem.item._id ? null : feedItem.item._id)
-                  )
-                }
-              />
-              {commentTarget === feedItem.item._id ? <CommentThread contentType="post" contentId={feedItem.item._id} /> : null}
-            </div>
-          )
-        )}
-      </div>
-
-      {totalPages > 1 ? (
-        <nav className="flex flex-wrap items-center justify-center gap-2 pt-1" aria-label="Feed pagination">
-          <Button variant="secondary" size="sm" disabled={page <= 1 || query.isFetching} onClick={() => setPage((current) => Math.max(current - 1, 1))}>
-            Previous
-          </Button>
-          {pageNumbers.map((pageNumber) => (
-            <Button
-              key={pageNumber}
-              variant={pageNumber === page ? "primary" : "secondary"}
-              size="sm"
-              disabled={query.isFetching}
-              onClick={() => setPage(pageNumber)}
-              aria-current={pageNumber === page ? "page" : undefined}
+            <div
+              role="group"
+              aria-label="Feed sort"
+              className="inline-flex rounded-md border border-subtle bg-surface-subtle p-0.5"
             >
-              {pageNumber}
-            </Button>
-          ))}
-          <Button variant="secondary" size="sm" disabled={page >= totalPages || query.isFetching} onClick={() => setPage((current) => Math.min(current + 1, totalPages))}>
-            Next
-          </Button>
-        </nav>
-      ) : null}
+              <button
+                type="button"
+                onClick={() => handleFeedSortChange("latest")}
+                aria-pressed={feedSort === "latest"}
+                className={cn(
+                  "relative isolate h-8 rounded-sm px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
+                  feedSort === "latest"
+                    ? "text-content-primary"
+                    : "text-content-muted hover:text-content-primary"
+                )}
+              >
+                {feedSort === "latest" ? (
+                  <motion.span
+                    layoutId={reducedMotion ? undefined : "today-sort-filter-pill"}
+                    transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: MOTION_EASE }}
+                    className="pointer-events-none absolute inset-0 rounded-sm bg-surface-elevated shadow-xs"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span className="relative z-10">Feed</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFeedSortChange("trending")}
+                aria-pressed={feedSort === "trending"}
+                className={cn(
+                  "relative isolate h-8 rounded-sm px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
+                  feedSort === "trending"
+                    ? "text-content-primary"
+                    : "text-content-muted hover:text-content-primary"
+                )}
+              >
+                {feedSort === "trending" ? (
+                  <motion.span
+                    layoutId={reducedMotion ? undefined : "today-sort-filter-pill"}
+                    transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: MOTION_EASE }}
+                    className="pointer-events-none absolute inset-0 rounded-sm bg-surface-elevated shadow-xs"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span className="relative z-10">Trending</span>
+              </button>
+            </div>
+          </div>
 
-      <div className="pt-2 text-center text-sm text-ink-500">
-        Want a deeper read?{" "}
-        <Link to="/search" className="font-medium text-accent-700 dark:text-accent-300">
-          Read articles and creators
-        </Link>
-        .
+          {/* Feed body */}
+          <div className="mt-2">
+            {isInitialFeedLoading ? <ArticleRowSkeletonList /> : null}
+
+            {!isInitialFeedLoading && activeQuery.error ? (
+              <div className="py-4">
+                <ErrorState
+                  error={activeQuery.error}
+                  onRetry={() => void activeQuery.refetch()}
+                />
+              </div>
+            ) : null}
+
+            {!isInitialFeedLoading && !activeQuery.error && visibleFeedItems.length === 0 ? (
+              <div className="py-6">
+                <EmptyState
+                  title={
+                    contentFilter === "articles"
+                      ? "No articles published yet"
+                      : "No learning logs yet"
+                  }
+                  description={
+                    contentFilter === "articles"
+                      ? "Thoughtful long-form articles from writers and learners on Upwrite will appear here."
+                      : "Short reflections, progress notes, and lessons learned will appear here."
+                  }
+                  action={
+                    contentFilter === "articles" ? (
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <Button variant="primary" onClick={() => navigate("/read")}>
+                          Explore Read
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() =>
+                            isAuthenticated
+                              ? navigate("/write?mode=article")
+                              : openAuthPromptForPath(
+                                  "/write?mode=article",
+                                  "Sign in to write an article."
+                                )
+                          }
+                        >
+                          Write an article
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        onClick={() =>
+                          isAuthenticated
+                            ? navigate("/write?mode=log")
+                            : openAuthPromptForPath(
+                                "/write?mode=log",
+                                "Sign in to write a learning log."
+                              )
+                        }
+                      >
+                        Write a learning log
+                      </Button>
+                    )
+                  }
+                />
+              </div>
+            ) : null}
+
+            {visibleFeedItems.length > 0 ? (
+              <motion.div
+                key={`${contentFilter}:${feedSort}:${page}`}
+                initial={localReveal.initial}
+                animate={localReveal.animate}
+                transition={localReveal.transition}
+                className={cn(
+                  "transition-opacity duration-150",
+                  activeQuery.isFetching && !isInitialFeedLoading ? "opacity-70" : "opacity-100"
+                )}
+                aria-busy={activeQuery.isFetching}
+              >
+                {contentFilter === "articles" ? (
+                  <div>
+                    {visibleFeedItems.map((feedItem, index) => (
+                      <ArticleRow
+                        key={`article-${feedItem.item._id}`}
+                        article={feedItem.item as Article}
+                        priority={index === 0}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4 pt-2">
+                    {visibleFeedItems.map((feedItem) => {
+                      const post = feedItem.item as Post;
+                      return (
+                        <div key={`post-${post._id}`} className="space-y-3">
+                          <PostCard
+                            post={post}
+                            onOpenComments={() => {
+                              if (!isAuthenticated) {
+                                setAuthPrompt({
+                                  open: true,
+                                  message: "Sign in to comment on this learning log.",
+                                  action: "comment",
+                                  contentType: "post",
+                                  contentId: post._id
+                                });
+                                return;
+                              }
+                              setCommentTarget(commentTarget === post._id ? null : post._id);
+                            }}
+                          />
+                          <AnimatePresence initial={false}>
+                            {commentTarget === post._id ? (
+                              <motion.div
+                                key={`comments-${post._id}`}
+                                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                                animate={{
+                                  opacity: 1,
+                                  y: 0,
+                                  transition: { duration: reducedMotion ? 0.08 : 0.16, ease: MOTION_EASE }
+                                }}
+                                exit={
+                                  reducedMotion
+                                    ? { opacity: 0 }
+                                    : { opacity: 0, y: -4, transition: { duration: 0.12, ease: MOTION_EXIT_EASE } }
+                                }
+                              >
+                                <CommentThread contentType="post" contentId={post._id} />
+                              </motion.div>
+                            ) : null}
+                          </AnimatePresence>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            ) : null}
+
+            <FeedPagination
+              page={page}
+              totalPages={totalPages}
+              disabled={activeQuery.isFetching}
+              onPageChange={handlePageChange}
+            />
+          </div>
+        </section>
+
+        {/* Right personal rail on wide desktop (>=1160px) */}
+        {isWideDesktop ? <PersonalRail {...workspaceProps} /> : null}
       </div>
+
       <AuthPrompt
         open={authPrompt.open}
         message={authPrompt.message}
         action={authPrompt.action}
+        targetPath={authPrompt.targetPath}
+        contentType={authPrompt.contentType}
+        contentId={authPrompt.contentId}
         onClose={() => setAuthPrompt((current) => ({ ...current, open: false }))}
       />
     </div>

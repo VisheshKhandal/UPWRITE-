@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Bold,
   ChevronDown,
@@ -19,6 +20,7 @@ import {
   Underline,
   X
 } from "lucide-react";
+import { getPopoverVariants, useReducedMotionPreference } from "../../motion/system";
 import { cn } from "../../utils/cn";
 import { FloatingDropdown } from "../ui/FloatingDropdown";
 import { MobileBottomSheet } from "../ui/MobileBottomSheet";
@@ -50,6 +52,8 @@ export function ResponsiveEditorToolbar({
   const [isMobile, setIsMobile] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const moreMenuRef = useRef<HTMLButtonElement | null>(null);
+  const reducedMotion = useReducedMotionPreference();
+  const popoverVariants = getPopoverVariants(reducedMotion, "down");
 
   // Detect mobile
   useEffect(() => {
@@ -60,6 +64,28 @@ export function ResponsiveEditorToolbar({
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  // Outside click and Escape dismissal for non-more menus
+  useEffect(() => {
+    if (!menu || menu === "more") return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && rootRef.current && !rootRef.current.contains(target)) {
+        setMenu(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenu(null);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menu]);
 
   // Handle menu close
   const closeMenu = () => setMenu(null);
@@ -271,12 +297,26 @@ export function ResponsiveEditorToolbar({
         </MobileBottomSheet>
       )}
 
-      {/* Fallback for non-more menus - keep as absolute positioned for simplicity */}
-      {menu && menu !== "more" && (
-        <div className="absolute right-0 top-[calc(100%+0.4rem)] z-50 min-w-52 rounded-xl border border-ink-200 bg-white p-1.5 shadow-2xl dark:border-ink-800 dark:bg-ink-950">
-          {renderMenuItems(getMenuItems(menu))}
-        </div>
-      )}
+      {/* Animated popover for non-more menus */}
+      <AnimatePresence>
+        {menu && menu !== "more" ? (
+          <motion.div
+            key={menu}
+            role="menu"
+            variants={popoverVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            style={{ transformOrigin: "top left" }}
+            className={cn(
+              "absolute top-[calc(100%+0.4rem)] z-50 min-w-52 rounded-xl border border-ink-200 bg-white p-1.5 shadow-2xl dark:border-ink-800 dark:bg-ink-950",
+              menu === "headings" ? "left-0 sm:left-32" : "right-0"
+            )}
+          >
+            {renderMenuItems(getMenuItems(menu))}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

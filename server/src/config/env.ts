@@ -109,9 +109,9 @@ export const env = {
   CLIENT_ORIGINS: [
     ...(parsed.data.CLIENT_ORIGINS ?? "")
       .split(",")
-      .map((origin) => origin.trim())
+      .map((origin) => origin.trim().replace(/\/+$/, ""))
       .filter(Boolean),
-    parsed.data.CLIENT_ORIGIN
+    parsed.data.CLIENT_ORIGIN.trim().replace(/\/+$/, "")
   ],
   isProduction: parsed.data.NODE_ENV === "production",
   isDevelopment: parsed.data.NODE_ENV === "development"

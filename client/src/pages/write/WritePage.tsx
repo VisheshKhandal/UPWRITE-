@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, FileText, Image, MoreHorizontal, Send, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArticleEditor } from "../../components/article/ArticleEditor";
+import { resolveWriteTab, type WriteTab } from "../../components/today/todayUtils";
 import { Button } from "../../components/ui/Button";
 import { Tabs } from "../../components/ui/Tabs";
 import { SafeImage } from "../../components/ui/SafeImage";
@@ -14,6 +16,7 @@ import { useCreatePostMutation } from "../../features/posts/postsApi";
 import { useGenerateLearningResponseMutation, type AiAction } from "../../features/ai/aiApi";
 import { pushToast } from "../../features/ui/uiSlice";
 import { useUploadImageMutation } from "../../features/uploads/uploadsApi";
+import { MOTION_DURATION, MOTION_EASE, useReducedMotionPreference } from "../../motion/system";
 import { getImageSrc } from "../../utils/image";
 import type { ImageAsset, PostType } from "../../types/models";
 import { getErrorMessage } from "../../utils/errors";
@@ -21,8 +24,25 @@ import { consumePromotedNote, noteToArticleContent, storePromotedNote } from "..
 import { cn } from "../../utils/cn";
 import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
-type WriteTab = "article" | "post";
 const LEARNING_LOG_WORD_LIMIT = 1000;
+const LEARNING_LOG_DRAFT_KEY = "upwrite-learning-log-draft-v1";
+
+interface StoredLearningLogDraft {
+  title?: string;
+  body?: string;
+  type?: PostType;
+  tags?: string;
+}
+
+const loadLearningLogDraft = (): StoredLearningLogDraft => {
+  try {
+    const raw = localStorage.getItem(LEARNING_LOG_DRAFT_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as StoredLearningLogDraft;
+  } catch {
+    return {};
+  }
+};
 
 const countWords = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
 
@@ -62,9 +82,18 @@ const aiActions: LearningLogAiAction[] = [
 
 export default function WritePage() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const [tab, setTab] = useState<WriteTab>(() => (localStorage.getItem("upwrite-write-tab") as WriteTab | null) ?? "article");
+  const modeParam = searchParams.get("mode");
+
+  const [tab, setTab] = useState<WriteTab>(() =>
+    resolveWriteTab({
+      articleId: id,
+      modeParam,
+      rememberedTab: localStorage.getItem("upwrite-write-tab")
+    })
+  );
   const [coverImage, setCoverImage] = useState<ImageAsset | undefined>();
   const [promotedDraft, setPromotedDraft] = useState<{
     title?: string;
@@ -82,6 +111,16 @@ export default function WritePage() {
   const [createArticle, createState] = useCreateArticleMutation();
   const [updateArticle, updateState] = useUpdateArticleMutation();
   const [uploadImage, uploadState] = useUploadImageMutation();
+
+  // Sync tab when route params or ?mode= query parameter changes (including Browser Back/Forward)
+  useEffect(() => {
+    const resolved = resolveWriteTab({
+      articleId: id,
+      modeParam,
+      rememberedTab: localStorage.getItem("upwrite-write-tab")
+    });
+    setTab(resolved);
+  }, [id, modeParam]);
 
   useEffect(() => {
     localStorage.setItem("upwrite-write-tab", tab);
@@ -101,6 +140,20 @@ export default function WritePage() {
     setTab("article");
     dispatch(pushToast({ title: "Note loaded into article editor", tone: "success" }));
   }, [dispatch]);
+
+  const handleTabChange = (nextTab: WriteTab) => {
+    if (id && nextTab !== "article") {
+      setTab("post");
+      return;
+    }
+    setTab(nextTab);
+    localStorage.setItem("upwrite-write-tab", nextTab);
+    if (!id) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("mode", nextTab === "post" ? "log" : "article");
+      setSearchParams(nextParams, { replace: false });
+    }
+  };
 
   const onUpload = async (file: File, context: "article_cover" | "post_media" = "article_cover") => {
     if (!currentUser) {
@@ -144,13 +197,15 @@ export default function WritePage() {
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">{id ? "Article draft" : "Untitled draft"}</p>
-            <p className="truncate text-xs text-ink-500">{id ? "Saved draft" : "Saved on this device"}</p>
+            <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">
+              {tab === "post" ? "Learning log draft" : id ? (article?.title || "Article draft") : "Untitled draft"}
+            </p>
+            <p className="truncate text-xs text-ink-500">{id && tab === "article" ? "Saved draft" : "Saved on this device"}</p>
           </div>
         </div>
         <Tabs
           value={tab}
-          onChange={setTab}
+          onChange={handleTabChange}
           items={[
             { value: "article", label: "Article" },
             { value: "post", label: "Learning Log" }
@@ -158,30 +213,32 @@ export default function WritePage() {
         />
       </section>
 
-      {tab === "article" ? (
-        <div className="min-h-0 flex-1">
-          <ArticleEditor
-            initialArticle={article}
-            promotedDraft={promotedDraft ?? undefined}
-            coverImage={coverImage ?? article?.coverImage ?? promotedDraft?.coverImage}
-            coverUploading={uploadState.isLoading}
-            onCoverUpload={onArticleUpload}
-            saving={createState.isLoading || updateState.isLoading}
-            onSave={save}
-          />
-        </div>
-      ) : (
+      {/* Keep both editors mounted so switching tabs never discards unsaved writing */}
+      <div className={cn("min-h-0 flex-1", tab !== "article" && "hidden")} aria-hidden={tab !== "article"}>
+        <ArticleEditor
+          initialArticle={article}
+          promotedDraft={promotedDraft ?? undefined}
+          coverImage={coverImage ?? article?.coverImage ?? promotedDraft?.coverImage}
+          coverUploading={uploadState.isLoading}
+          onCoverUpload={onArticleUpload}
+          saving={createState.isLoading || updateState.isLoading}
+          onSave={save}
+        />
+      </div>
+
+      <div className={cn("min-h-0 flex-1", tab !== "post" && "hidden")} aria-hidden={tab !== "post"}>
         <PostWriter
           onUpload={onUpload}
           uploadLoading={uploadState.isLoading}
           onPromoteToArticle={(draft) => {
             setPromotedDraft(draft);
             if (draft.coverImage) setCoverImage(draft.coverImage);
-            setTab("article");
+            handleTabChange("article");
             window.setTimeout(() => setPromotedDraft(null), 0);
           }}
         />
-      )}
+      </div>
+
       <AuthPrompt
         open={authPrompt.open}
         message={authPrompt.message}
@@ -210,21 +267,22 @@ const PostWriter = ({
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
+  const initialDraft = useMemo(() => loadLearningLogDraft(), []);
   const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
     open: false,
     message: "Continue with Upwrite"
   });
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [type, setType] = useState<PostType>("learning");
-  const [tags, setTags] = useState("");
+  const [title, setTitle] = useState(initialDraft.title ?? "");
+  const [body, setBody] = useState(initialDraft.body ?? "");
+  const [type, setType] = useState<PostType>(initialDraft.type ?? "learning");
+  const [tags, setTags] = useState(initialDraft.tags ?? "");
   const [cover, setCover] = useState<ImageAsset | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiResult, setAiResult] = useState<{ label: string; response: string; canApply: boolean; selection?: { start: number; end: number } } | null>(null);
   const [aiStatus, setAiStatus] = useState("");
   const [aiError, setAiError] = useState("");
-  const [contentUpdating, setContentUpdating] = useState(false);
+  const reducedMotion = useReducedMotionPreference();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const aiButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -238,6 +296,22 @@ const PostWriter = ({
     () => tags.split(",").map((tag) => tag.trim()).filter(Boolean),
     [tags]
   );
+
+  // Persist unsaved learning log draft locally across tab changes and navigation
+  useEffect(() => {
+    try {
+      if (!title.trim() && !body.trim() && !tags.trim()) {
+        localStorage.removeItem(LEARNING_LOG_DRAFT_KEY);
+      } else {
+        localStorage.setItem(
+          LEARNING_LOG_DRAFT_KEY,
+          JSON.stringify({ title, body, type, tags })
+        );
+      }
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [title, body, type, tags]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -255,8 +329,13 @@ const PostWriter = ({
         tags: tagList,
         media: cover ? [cover] : undefined
       }).unwrap();
+      localStorage.removeItem(LEARNING_LOG_DRAFT_KEY);
+      setTitle("");
+      setBody("");
+      setTags("");
+      setCover(null);
       dispatch(pushToast({ title: "Learning log published", tone: "success" }));
-      navigate("/");
+      navigate("/?type=logs");
     } catch (error) {
       dispatch(pushToast({ title: getErrorMessage(error, "Sign in before publishing your learning log."), tone: "error" }));
     }
@@ -353,18 +432,14 @@ const PostWriter = ({
       editor.focus();
       editor.setSelectionRange(start, end);
       editor.setRangeText(replacement, start, end, "end");
-      setContentUpdating(true);
       setBody(editor.value);
       selectionRef.current = null;
       setAiResult(null);
-      window.setTimeout(() => setContentUpdating(false), 220);
       return;
     }
 
-    setContentUpdating(true);
     setBody((current) => current.slice(0, start) + replacement + current.slice(end));
     setAiResult(null);
-    window.setTimeout(() => setContentUpdating(false), 220);
   };
 
   const promoteToArticle = () => {
@@ -475,7 +550,7 @@ const PostWriter = ({
         </div>
       ) : null}
 
-      <div className={cn("grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] px-4 py-4 transition-opacity duration-200 sm:px-8 sm:py-6", contentUpdating && "opacity-70")}>
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] px-4 py-4 sm:px-8 sm:py-6">
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -534,32 +609,41 @@ const PostWriter = ({
         </div>
       ) : null}
 
-      {aiResult ? (
-        <div className="learning-log-result">
-          <div className="flex items-center justify-between gap-3 border-b border-ink-200 px-3 py-2 dark:border-ink-800">
-            <div className="flex min-w-0 items-center gap-2">
-              <Sparkles className="h-4 w-4 shrink-0 text-accent-600" />
-              <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">{aiResult.label}</p>
-            </div>
-            <Button type="button" variant="ghost" size="icon" aria-label="Close AI result" onClick={() => setAiResult(null)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="max-h-72 overflow-y-auto p-3">
-            <div className="reading-prose text-sm leading-6">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResult.response}</ReactMarkdown>
-            </div>
-          </div>
-          {aiResult.canApply ? (
-            <div className="flex justify-end border-t border-ink-200 p-2 dark:border-ink-800">
-              <Button type="button" size="sm" onClick={applyAiResult}>
-                <Check className="h-4 w-4" />
-                Replace text
+      <AnimatePresence>
+        {aiResult ? (
+          <motion.div
+            key="learning-log-ai-result"
+            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+            transition={{ duration: reducedMotion ? 0.08 : MOTION_DURATION.normal, ease: MOTION_EASE.out }}
+            className="learning-log-result"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-ink-200 px-3 py-2 dark:border-ink-800">
+              <div className="flex min-w-0 items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0 text-accent-600" />
+                <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-100">{aiResult.label}</p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" aria-label="Close AI result" onClick={() => setAiResult(null)}>
+                <X className="h-4 w-4" />
               </Button>
             </div>
-          ) : null}
-        </div>
-      ) : null}
+            <div className="max-h-72 overflow-y-auto p-3">
+              <div className="reading-prose text-sm leading-6">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResult.response}</ReactMarkdown>
+              </div>
+            </div>
+            {aiResult.canApply ? (
+              <div className="flex justify-end border-t border-ink-200 p-2 dark:border-ink-800">
+                <Button type="button" size="sm" onClick={applyAiResult}>
+                  <Check className="h-4 w-4" />
+                  Replace text
+                </Button>
+              </div>
+            ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </form>
     <AuthPrompt
       open={authPrompt.open}

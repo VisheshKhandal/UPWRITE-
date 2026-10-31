@@ -1,7 +1,14 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, BookOpen, Brain, CheckCircle2, Github, Layers3, Library, Linkedin, MessageSquare, PenLine, Repeat2, Search, Sparkles, UserRound } from "lucide-react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import {
+  MOTION_DURATION,
+  MOTION_EASE,
+  scrollElementIntoViewWithMotionPreference,
+  useReducedMotionPreference
+} from "../../motion/system";
 import { cn } from "../../utils/cn";
 
 const loopSteps = [
@@ -45,6 +52,7 @@ const manifesto = [
 
 export default function AboutPage() {
   const [activeLoop, setActiveLoop] = useState(0);
+  const reducedMotion = useReducedMotionPreference();
   const ActiveIcon = loopSteps[activeLoop].icon;
 
   return (
@@ -59,10 +67,10 @@ export default function AboutPage() {
             Upwrite helps people turn what they read, learn, and build into organized knowledge, active recall, thoughtful writing, and a public identity that compounds over time.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button onClick={() => document.getElementById("learning-loop")?.scrollIntoView({ behavior: "smooth" })}>
+            <Button onClick={() => scrollElementIntoViewWithMotionPreference(document.getElementById("learning-loop"), reducedMotion, { block: "start" })}>
               Explore the loop <ArrowRight className="h-4 w-4" />
             </Button>
-            <Button variant="secondary" onClick={() => document.getElementById("manifesto")?.scrollIntoView({ behavior: "smooth" })}>
+            <Button variant="secondary" onClick={() => scrollElementIntoViewWithMotionPreference(document.getElementById("manifesto"), reducedMotion, { block: "start" })}>
               Read the manifesto
             </Button>
           </div>
@@ -75,9 +83,9 @@ export default function AboutPage() {
                 type="button"
                 onClick={() => setActiveLoop(index)}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg border p-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-200 hover:bg-ink-100/70 focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:border-accent-900 dark:hover:bg-ink-800/55",
+                  "flex items-center gap-3 rounded-lg border p-3 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-accent-200 hover:bg-ink-100/70 focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:border-accent-900 dark:hover:bg-ink-800/55",
                   activeLoop === index
-                    ? "scale-[1.01] border-accent-300 bg-accent-50/45 shadow-panel ring-1 ring-accent-200/40 dark:border-accent-800 dark:bg-accent-950/18 dark:ring-accent-700/25"
+                    ? "border-accent-300 bg-accent-50/45 shadow-panel ring-1 ring-accent-200/40 dark:border-accent-800 dark:bg-accent-950/18 dark:ring-accent-700/25"
                     : "border-ink-200 bg-ink-50/60 dark:border-ink-800 dark:bg-ink-900/55"
                 )}
               >
@@ -123,20 +131,29 @@ export default function AboutPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">The Upwrite Learning Loop</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-normal text-ink-950 dark:text-ink-50">From attention to public proof.</h2>
           </div>
-          <div className="rounded-xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950">
-            <div className="flex items-center gap-3">
-              <ActiveIcon className="h-5 w-5 text-accent-700 dark:text-accent-300" />
-              <p className="font-semibold">{loopSteps[activeLoop].label}</p>
-            </div>
-            <p className="mt-2 max-w-md text-sm leading-6 text-ink-500">{loopSteps[activeLoop].body}</p>
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={loopSteps[activeLoop].label}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reducedMotion ? 0.08 : MOTION_DURATION.fast, ease: MOTION_EASE.out }}
+              className="rounded-xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950"
+            >
+              <div className="flex items-center gap-3">
+                <ActiveIcon className="h-5 w-5 text-accent-700 dark:text-accent-300" />
+                <p className="font-semibold">{loopSteps[activeLoop].label}</p>
+              </div>
+              <p className="mt-2 max-w-md text-sm leading-6 text-ink-500">{loopSteps[activeLoop].body}</p>
+            </motion.div>
+          </AnimatePresence>
         </div>
         <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           {loopSteps.map((step, index) => (
             <button key={step.label} type="button" onClick={() => setActiveLoop(index)} className={cn(
-              "group rounded-xl border p-4 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-200 hover:bg-ink-50 focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:border-accent-900 dark:hover:bg-ink-800/55",
+              "group rounded-xl border p-4 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-accent-200 hover:bg-ink-50 focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:border-accent-900 dark:hover:bg-ink-800/55",
               activeLoop === index
-                ? "scale-[1.015] border-accent-300 bg-accent-50/45 shadow-panel ring-1 ring-accent-200/40 dark:border-accent-800 dark:bg-accent-950/18 dark:ring-accent-700/25"
+                ? "border-accent-300 bg-accent-50/45 shadow-panel ring-1 ring-accent-200/40 dark:border-accent-800 dark:bg-accent-950/18 dark:ring-accent-700/25"
                 : "border-ink-200 bg-white/70 dark:border-ink-800 dark:bg-ink-900/55"
             )}>
               <step.icon className="h-5 w-5 text-accent-700 dark:text-accent-300" />
@@ -166,7 +183,7 @@ export default function AboutPage() {
         <h2 className="text-3xl font-semibold tracking-normal text-ink-950 dark:text-ink-50">Core product experience</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {experiences.map(([title, body, Icon]) => (
-            <Card key={title} className="p-5 transition duration-200 hover:-translate-y-0.5 hover:border-accent-300 dark:hover:border-accent-800">
+            <Card key={title} className="p-5 transition-colors duration-150 hover:border-accent-300 dark:hover:border-accent-800">
               <Icon className="h-5 w-5 text-accent-700 dark:text-accent-300" />
               <h3 className="mt-4 text-lg font-semibold">{title}</h3>
               <p className="mt-2 text-sm leading-6 text-ink-500">{body}</p>

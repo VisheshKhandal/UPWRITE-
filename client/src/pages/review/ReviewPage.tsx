@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { BookOpen, CheckCircle2, Clock, FolderOpen, Layers3, Play, RotateCcw, Sparkles, Target } from "lucide-react";
 import { FlashcardReview } from "../../components/review/FlashcardReview";
 import { EmptyState } from "../../components/common/EmptyState";
@@ -13,9 +13,11 @@ import { useSavedQuery } from "../../features/saved/savedApi";
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
 import { useAppSelector } from "../../app/hooks";
 import { AuthPrompt } from "../../components/auth/AuthPrompt";
+import { recordArticleActivation } from "../../motion/articleTransition";
 
 export default function ReviewPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const user = useAppSelector((state) => state.auth.user);
   const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
@@ -53,8 +55,18 @@ export default function ReviewPage() {
   const openLastRead = () => {
     const last = progress[0]?.article;
     const author = last && typeof last === "object" && typeof last.author === "object" ? last.author : null;
-    if (last && typeof last === "object" && author?.username) navigate(`/articles/${author.username}/${last.slug}`);
-    else navigate("/read");
+    if (last && typeof last === "object" && author?.username) {
+      recordArticleActivation({
+        slug: last.slug,
+        instanceId: `learn-last-${last._id}`,
+        mode: "continue",
+        sourcePath: `${location.pathname}${location.search}`,
+        sourceScrollY: window.scrollY
+      });
+      navigate(`/articles/${author.username}/${last.slug}`);
+    } else {
+      navigate("/read");
+    }
   };
 
   useEffect(() => {
@@ -176,17 +188,38 @@ export default function ReviewPage() {
                 {inProgressReads.slice(0, 3).map((item) => {
                   const article = typeof item.article === "object" ? item.article : null;
                   const author = article && typeof article.author === "object" ? article.author : null;
+                  const instanceId = `learn-progress-${item._id}`;
                   return (
-                    <Card key={item._id} className="overflow-hidden p-4">
+                    <Card key={item._id} data-article-instance={instanceId} className="overflow-hidden p-4">
                       <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink-500">Reading progress</p>
                           <h3 className="mt-1 truncate font-semibold text-ink-950 dark:text-ink-50">{article?.title ?? "Saved article"}</h3>
                           <div className="mt-3 h-1.5 max-w-full overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
-                            <div className="h-full rounded-full bg-accent-600 dark:bg-accent-400" style={{ width: `${Math.min(100, item.progressPercent)}%` }} />
+                            <div
+                              className="h-full w-full origin-left rounded-full bg-accent-600 transition-transform duration-200 motion-reduce:transition-none dark:bg-accent-400"
+                              style={{ transform: `scaleX(${Math.max(0, Math.min(100, item.progressPercent)) / 100})` }}
+                            />
                           </div>
                         </div>
-                        <Button variant="secondary" className="shrink-0 self-start md:self-center" onClick={() => article && author?.username ? navigate(`/articles/${author.username}/${article.slug}`) : openLastRead()}>
+                        <Button
+                          variant="secondary"
+                          className="shrink-0 self-start md:self-center"
+                          onClick={() => {
+                            if (article && author?.username) {
+                              recordArticleActivation({
+                                slug: article.slug,
+                                instanceId,
+                                mode: "continue",
+                                sourcePath: `${location.pathname}${location.search}`,
+                                sourceScrollY: window.scrollY
+                              });
+                              navigate(`/articles/${author.username}/${article.slug}`);
+                            } else {
+                              openLastRead();
+                            }
+                          }}
+                        >
                           Continue
                         </Button>
                       </div>

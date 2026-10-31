@@ -8,22 +8,22 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, label, id, ...props }, ref) => {
     const textarea = (
-    <textarea
-      ref={ref}
-      id={id}
-      className={cn(
-        "min-h-32 w-full resize-y rounded-lg border border-ink-200 bg-white px-3 py-3 text-sm leading-6 text-ink-950 placeholder:text-ink-400 transition-colors focus:border-accent-500 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-50",
-        className
-      )}
-      {...props}
-    />
+      <textarea
+        ref={ref}
+        id={id}
+        className={cn(
+          "min-h-32 w-full resize-y rounded-md border border-default bg-surface px-3 py-2.5 text-sm leading-6 text-content-primary outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-content-muted hover:border-strong focus:border-accent focus:ring-2 focus:ring-[var(--focus-ring)]/25 disabled:cursor-not-allowed disabled:opacity-55",
+          className
+        )}
+        {...props}
+      />
     );
 
     if (!label) return textarea;
 
     return (
-      <label className="block text-sm font-medium text-ink-900 dark:text-ink-100">
-        <span className="mb-2 block">{label}</span>
+      <label className="block">
+        <span className="type-label mb-1.5 block">{label}</span>
         {textarea}
       </label>
     );

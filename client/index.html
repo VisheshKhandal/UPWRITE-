@@ -1,24 +1,37 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
       content="Upwrite is a calm, premium knowledge-sharing platform for learners, builders, writers, and creators."
     />
-    <meta name="theme-color" content="#0f1020" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#050509" media="(prefers-color-scheme: dark)" />
+    <!-- Initial colours match --bg-canvas; RootLayout keeps them in sync with the chosen theme. -->
+    <meta name="theme-color" content="#f6f7f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d0f0e" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("upwrite-theme");
+          var isDark = saved === "light" ? false : saved === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true;
+          document.documentElement.classList.toggle("dark", isDark);
+        } catch (e) {}
+      })();
+    </script>
     <meta name="application-name" content="Upwrite" />
-    <meta name="apple-mobile-web-app-title" content="Upwrite" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Upwrite" />
+    <!-- "default" keeps iOS status-bar text readable in both light and dark themes. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>Upwrite</title>
   </head>
   <body>
@@ -27,6 +40,9 @@
         <img src="/UPWRITE logo.png" alt="Upwrite" />
       </div>
     </div>
+    <noscript>
+      <p style="padding: 1rem; font-family: system-ui, sans-serif">Upwrite needs JavaScript enabled.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -47,6 +47,7 @@ export interface User {
 }
 
 export interface AppearanceSettings {
+  lineSpacing?: number;
   theme: "light" | "dark" | "system";
   fontSize: "small" | "medium" | "large" | "extra-large";
   readingWidth: "narrow" | "comfortable" | "wide";
@@ -105,6 +106,8 @@ export interface Post {
   tags?: string[];
   media?: ImageAsset[];
   engagement?: Engagement;
+  viewerLiked?: boolean;
+  viewerSaved?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -131,9 +134,12 @@ export interface Article {
   coverImage?: ImageAsset;
   readingTimeMinutes: number;
   stats?: ArticleStats;
+  viewerLiked?: boolean;
+  viewerSaved?: boolean;
   publishedAt?: string;
   createdAt: string;
   updatedAt?: string;
+  deletedAt?: string;
 }
 
 export type ContentType = "post" | "article";
@@ -181,6 +187,7 @@ export interface Notification {
   message: string;
   entityType?: string;
   entityId?: Id;
+  targetUrl?: string;
   readAt?: string;
   createdAt: string;
 }

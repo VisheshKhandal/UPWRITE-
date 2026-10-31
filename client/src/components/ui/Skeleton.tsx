@@ -2,7 +2,7 @@ import type { HTMLAttributes } from "react";
 import { cn } from "../../utils/cn";
 
 export const Skeleton = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("animate-pulse rounded-md bg-ink-200/80 dark:bg-ink-800", className)} {...props} />
+  <div className={cn("animate-pulse rounded-sm bg-surface-subtle", className)} {...props} />
 );
 
 export const FeedSkeleton = () => (
@@ -11,16 +11,16 @@ export const FeedSkeleton = () => (
       <div key={item} className="surface overflow-hidden rounded-lg">
         <Skeleton className="h-36 w-full rounded-none sm:h-44" />
         <div className="p-5">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <div className="space-y-2">
-            <Skeleton className="h-3 w-28" />
-            <Skeleton className="h-3 w-20" />
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-3 w-20" />
+            </div>
           </div>
-        </div>
-        <Skeleton className="mt-5 h-5 w-4/5" />
-        <Skeleton className="mt-3 h-4 w-4/5" />
-        <Skeleton className="mt-3 h-4 w-3/5" />
+          <Skeleton className="mt-5 h-5 w-4/5" />
+          <Skeleton className="mt-3 h-4 w-4/5" />
+          <Skeleton className="mt-3 h-4 w-3/5" />
         </div>
       </div>
     ))}

@@ -1,4 +1,4 @@
-import { AlertCircle, Github, LogIn } from "lucide-react";
+import { AlertCircle, Github, LogIn, WifiOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "../../app/hooks";
 import { Card } from "../ui/Card";
@@ -6,11 +6,27 @@ import { Button } from "../ui/Button";
 import { getErrorMessage, isAuthError, isNetworkError } from "../../utils/errors";
 import { getCurrentAuthPath, saveAuthIntent } from "../../features/auth/authIntent";
 import { startOAuth } from "../../features/auth/oauth";
+import { useOnlineStatus } from "../../pwa/hooks";
 
-export const ErrorState = ({ error }: { error: unknown }) => {
+export const ErrorState = ({ error, onRetry }: { error: unknown; onRetry?: () => void }) => {
   const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
+  const online = useOnlineStatus();
   const shouldInviteGuest = !user && (isNetworkError(error) || isAuthError(error));
+
+  if (!online && isNetworkError(error)) {
+    return (
+      <Card className="flex items-start gap-3 p-5">
+        <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div>
+          <p className="font-medium text-ink-950 dark:text-ink-50">You're offline</p>
+          <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">
+            This section loads from Upwrite's servers, so it needs an internet connection. It will load again automatically when you reconnect.
+          </p>
+        </div>
+      </Card>
+    );
+  }
 
   const rememberIntent = () => {
     saveAuthIntent({
@@ -60,12 +76,21 @@ export const ErrorState = ({ error }: { error: unknown }) => {
   }
 
   return (
-    <Card className="flex items-start gap-3 p-5">
-      <AlertCircle className="mt-0.5 h-5 w-5 text-red-500" />
-      <div>
-        <p className="font-medium text-ink-950 dark:text-ink-50">Could not load this section</p>
-        <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{getErrorMessage(error, "Please refresh or try again in a moment.")}</p>
+    <Card className="flex flex-wrap items-start justify-between gap-3 p-5">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+        <div>
+          <p className="font-medium text-ink-950 dark:text-ink-50">Could not load this section</p>
+          <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">
+            {getErrorMessage(error, "Please refresh or try again in a moment.")}
+          </p>
+        </div>
       </div>
+      {onRetry ? (
+        <Button size="sm" variant="secondary" onClick={onRetry}>
+          Retry
+        </Button>
+      ) : null}
     </Card>
   );
 };

@@ -46,6 +46,7 @@ export interface AiLearningResponse {
 }
 
 export interface SavedFlashcardSet {
+  user?: string;
   _id: string;
   articleId: string;
   articleTitle: string;

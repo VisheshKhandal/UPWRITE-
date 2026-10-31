@@ -7,6 +7,6 @@ import { feedQuerySchema } from "../validations/feed.validation";
 const router = Router();
 
 router.get("/latest", optionalAuth, validateRequest(feedQuerySchema), feedController.latest);
-router.get("/trending", validateRequest(feedQuerySchema), feedController.trending);
+router.get("/trending", optionalAuth, validateRequest(feedQuerySchema), feedController.trending);
 
 export default router;

@@ -4,6 +4,9 @@ const schema = new Schema({
   article: { type: Schema.Types.ObjectId, ref: "Article", required: true, index: true },
   progressPercent: { type: Number, default: 0, min: 0, max: 100 },
   lastScrollPosition: { type: Number, default: 0, min: 0 },
+  clientUpdatedAt: Number,
+  bodyPosition: { type: Number, min: 0, max: 1 },
+  anchor: { text: String, startOffset: Number, endOffset: Number, prefix: String, suffix: String },
   completedAt: Date
 }, { timestamps: { createdAt: false, updatedAt: true } });
 schema.index({ user: 1, article: 1 }, { unique: true });

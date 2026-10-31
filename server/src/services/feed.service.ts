@@ -3,11 +3,23 @@ import { FollowModel } from "../models/Follow";
 import { PostModel } from "../models/Post";
 import { UserModel } from "../models/User";
 import { getPagination, paginationMeta } from "../utils/pagination";
+import { attachViewerStateToFeedItems } from "./content.service";
 import type { Request } from "express";
+
+type FeedContentType = "article" | "post";
+
+const parseRequestedFeedType = (rawType: unknown): FeedContentType | undefined => {
+  if (rawType === "article" || rawType === "post") return rawType;
+  return undefined;
+};
+
+const compareTieBreaker = (aId: unknown, bId: unknown) =>
+  String(bId ?? "").localeCompare(String(aId ?? ""));
 
 export const feedService = {
   async latest(req: Request, userId?: string) {
     const { page, limit, skip } = getPagination(req);
+    const requestedType = parseRequestedFeedType(req.query.type);
     let authors: string[] | undefined;
     let interests: string[] = [];
 
@@ -32,15 +44,19 @@ export const feedService = {
     }
 
     const [posts, articles] = await Promise.all([
-      PostModel.find(postFilter)
-        .sort({ createdAt: -1 })
-        .populate("author", "name username avatar")
-        .lean(),
-      ArticleModel.find(articleFilter)
-        .sort({ createdAt: -1 })
-        .select("-content")
-        .populate("author", "name username avatar")
-        .lean()
+      !requestedType || requestedType === "post"
+        ? PostModel.find(postFilter)
+            .sort({ createdAt: -1, _id: -1 })
+            .populate("author", "name username avatar")
+            .lean()
+        : Promise.resolve([]),
+      !requestedType || requestedType === "article"
+        ? ArticleModel.find(articleFilter)
+            .sort({ createdAt: -1, _id: -1 })
+            .select("-content")
+            .populate("author", "name username avatar")
+            .lean()
+        : Promise.resolve([])
     ]);
 
     const score = (tags?: string[]) => {
@@ -50,45 +66,64 @@ export const feedService = {
     };
 
     const merged = [
-      ...posts.map((post) => ({ type: "post", createdAt: post.createdAt, score: score(post.tags), item: post })),
+      ...posts.map((post) => ({
+        type: "post" as const,
+        createdAt: post.createdAt,
+        score: score(post.tags),
+        item: post
+      })),
       ...articles.map((article) => ({
-        type: "article",
+        type: "article" as const,
         createdAt: article.createdAt,
         score: score(article.tags),
         item: article
       }))
-    ].sort((a, b) => b.score - a.score || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    ].sort(
+      (a, b) =>
+        b.score - a.score ||
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        compareTieBreaker(a.item._id, b.item._id)
+    );
+
+    const pageSlice = merged.slice(skip, skip + limit).map(({ score: _score, ...item }) => item);
+    const items = await attachViewerStateToFeedItems(pageSlice, userId);
 
     return {
-      items: merged.slice(skip, skip + limit).map(({ score: _score, ...item }) => item),
+      items,
       meta: paginationMeta(page, limit, merged.length)
     };
   },
 
-  async trending(req: Request) {
+  async trending(req: Request, userId?: string) {
     const { page, limit, skip } = getPagination(req);
+    const requestedType = parseRequestedFeedType(req.query.type);
 
     const [posts, articles] = await Promise.all([
-      PostModel.find({ deletedAt: { $exists: false } })
-        .sort({ "engagement.likesCount": -1, "engagement.commentsCount": -1, createdAt: -1 })
-        .populate("author", "name username avatar")
-        .lean(),
-      ArticleModel.find({
-        deletedAt: { $exists: false },
-        status: ArticleStatus.PUBLISHED
-      })
-        .sort({
-          "stats.likesCount": -1,
-          "stats.viewsCount": -1,
-          "stats.bookmarksCount": -1,
-          createdAt: -1
-        })
-        .select("-content")
-        .populate("author", "name username avatar")
-        .lean()
+      !requestedType || requestedType === "post"
+        ? PostModel.find({ deletedAt: { $exists: false } })
+            .sort({ "engagement.likesCount": -1, "engagement.commentsCount": -1, createdAt: -1, _id: -1 })
+            .populate("author", "name username avatar")
+            .lean()
+        : Promise.resolve([]),
+      !requestedType || requestedType === "article"
+        ? ArticleModel.find({
+            deletedAt: { $exists: false },
+            status: ArticleStatus.PUBLISHED
+          })
+            .sort({
+              "stats.likesCount": -1,
+              "stats.viewsCount": -1,
+              "stats.bookmarksCount": -1,
+              createdAt: -1,
+              _id: -1
+            })
+            .select("-content")
+            .populate("author", "name username avatar")
+            .lean()
+        : Promise.resolve([])
     ]);
 
-    const items = [
+    const ranked = [
       ...posts.map((post) => ({
         type: "post" as const,
         popularity:
@@ -107,11 +142,19 @@ export const feedService = {
         createdAt: article.createdAt,
         item: article
       }))
-    ].sort((a, b) => b.popularity - a.popularity || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    ].sort(
+      (a, b) =>
+        b.popularity - a.popularity ||
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        compareTieBreaker(a.item._id, b.item._id)
+    );
+
+    const pageSlice = ranked.slice(skip, skip + limit).map(({ popularity: _popularity, ...item }) => item);
+    const items = await attachViewerStateToFeedItems(pageSlice, userId);
 
     return {
-      items: items.slice(skip, skip + limit).map(({ popularity: _popularity, ...item }) => item),
-      meta: paginationMeta(page, limit, items.length)
+      items,
+      meta: paginationMeta(page, limit, ranked.length)
     };
   }
 };

@@ -16,8 +16,13 @@ interface UiState {
   toasts: ToastMessage[];
 }
 
+const readStoredTheme = (): ThemeMode => {
+  const stored = localStorage.getItem("upwrite-theme") as ThemeMode | null;
+  return stored === "light" || stored === "dark" || stored === "system" ? stored : "dark";
+};
+
 const initialState: UiState = {
-  theme: (localStorage.getItem("upwrite-theme") as ThemeMode | null) ?? "system",
+  theme: readStoredTheme(),
   sidebarOpen: false,
   toasts: []
 };

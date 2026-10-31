@@ -50,6 +50,8 @@ const baseQueryWithRefresh: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQu
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithRefresh,
+  // Reload visible data after the connection comes back (pairs with the offline banner).
+  refetchOnReconnect: true,
   tagTypes: [
     "Auth",
     "User",

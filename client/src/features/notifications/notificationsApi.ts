@@ -1,12 +1,23 @@
 import { baseApi, unwrapResponse } from "../../services/baseApi";
-import type { ApiResponse, PaginationQuery } from "../../types/api";
+import type { ApiResponse, PaginationMeta, PaginationQuery } from "../../types/api";
 import type { Notification } from "../../types/models";
+
+export type NotificationListResponse = Notification[] & {
+  unreadCount?: number;
+  meta?: PaginationMeta;
+};
 
 export const notificationsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    notifications: builder.query<Notification[], (PaginationQuery & { unreadOnly?: boolean }) | void>({
+    notifications: builder.query<NotificationListResponse, (PaginationQuery & { unreadOnly?: boolean }) | void>({
       query: (params) => ({ url: "/notifications", params: params ?? undefined }),
-      transformResponse: (response: ApiResponse<Notification[]>) => unwrapResponse(response),
+      transformResponse: (response: ApiResponse<Notification[]>) => {
+        const items = unwrapResponse(response);
+        return Object.assign([...items], {
+          unreadCount: response.meta?.unreadCount,
+          meta: response.meta
+        });
+      },
       providesTags: ["Notification"]
     }),
     markNotificationRead: builder.mutation<Notification, string>({

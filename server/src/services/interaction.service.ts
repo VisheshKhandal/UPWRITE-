@@ -7,7 +7,7 @@ import { CollectionModel } from "../models/Collection";
 import { PostModel } from "../models/Post";
 import { AppError } from "../utils/AppError";
 import { getPagination, paginationMeta } from "../utils/pagination";
-import { getContentOrThrow, incrementEngagement } from "./content.service";
+import { getContentOrThrow, getViewerInteractionSets, incrementEngagement } from "./content.service";
 import { notificationService } from "./notification.service";
 import type { Request } from "express";
 
@@ -22,28 +22,41 @@ export const interactionService = {
 
     if (existing) {
       await existing.deleteOne();
-      await incrementEngagement(input.contentType, input.contentId, "likesCount", -1);
-      return { liked: false };
+      const likesCount = await incrementEngagement(input.contentType, input.contentId, "likesCount", -1);
+      return { liked: false, likesCount };
     }
 
-    await LikeModel.create({
-      user: userId,
-      contentType: input.contentType,
-      contentId: input.contentId
-    });
-    await Promise.all([
+    try {
+      await LikeModel.create({
+        user: userId,
+        contentType: input.contentType,
+        contentId: input.contentId
+      });
+    } catch (error) {
+      if ((error as { code?: number })?.code === 11000) {
+        if (input.contentType === ContentType.ARTICLE) {
+          const current = await ArticleModel.findById(input.contentId).select("stats.likesCount").lean();
+          return { liked: true, likesCount: Math.max(0, Number(current?.stats?.likesCount ?? 0)) };
+        }
+        const current = await PostModel.findById(input.contentId).select("engagement.likesCount").lean();
+        return { liked: true, likesCount: Math.max(0, Number(current?.engagement?.likesCount ?? 0)) };
+      }
+      throw error;
+    }
+
+    const [likesCount] = await Promise.all([
       incrementEngagement(input.contentType, input.contentId, "likesCount", 1),
       notificationService.create({
         recipient: content.ownerId,
         actor: userId,
         type: NotificationType.LIKE,
-        message: "liked your article",
+        message: input.contentType === ContentType.POST ? "liked your learning log" : "liked your article",
         entityType: input.contentType,
         entityId: input.contentId
       })
     ]);
 
-    return { liked: true };
+    return { liked: true, likesCount };
   },
 
   async createComment(userId: string, input: { contentType: ContentType; contentId: string; body: string; parentComment?: string }) {
@@ -247,18 +260,30 @@ export const interactionService = {
 
     const articleIds = bookmarks.filter((item) => item.contentType === ContentType.ARTICLE).map((item) => item.contentId);
     const postIds = bookmarks.filter((item) => item.contentType === ContentType.POST).map((item) => item.contentId);
-    const [articles, posts] = await Promise.all([
+    const allContentIds = [...articleIds.map(String), ...postIds.map(String)];
+    const [articles, posts, { likedKeys }] = await Promise.all([
       ArticleModel.find({ _id: { $in: articleIds }, deletedAt: { $exists: false } })
         .select("-content")
         .populate("author", "name username avatar bio")
         .lean(),
       PostModel.find({ _id: { $in: postIds }, deletedAt: { $exists: false } })
         .populate("author", "name username avatar bio")
-        .lean()
+        .lean(),
+      getViewerInteractionSets(userId, allContentIds)
     ]);
 
-    const articleMap = new Map(articles.map((article) => [String(article._id), article]));
-    const postMap = new Map(posts.map((post) => [String(post._id), post]));
+    const articleMap = new Map(
+      articles.map((article) => [
+        String(article._id),
+        { ...article, viewerLiked: likedKeys.has(`article:${String(article._id)}`), viewerSaved: true }
+      ])
+    );
+    const postMap = new Map(
+      posts.map((post) => [
+        String(post._id),
+        { ...post, viewerLiked: likedKeys.has(`post:${String(post._id)}`), viewerSaved: true }
+      ])
+    );
     const items = bookmarks
       .map((bookmark) => ({
         ...bookmark,

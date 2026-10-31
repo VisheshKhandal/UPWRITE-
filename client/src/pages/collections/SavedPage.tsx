@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Archive, BookOpen, FileText, Folder, Inbox, Layers3, Lock, Pencil, Search, Share2, Sparkles, Trash2, Unlock } from "lucide-react";
 import { EmptyState } from "../../components/common/EmptyState";
 import { LearningLoopStrip } from "../../components/common/LearningLoopStrip";
@@ -23,6 +24,8 @@ import { useSavedQuery } from "../../features/saved/savedApi";
 import { useFlashcardSetsQuery } from "../../features/ai/aiApi";
 import { useFlashcardsQuery } from "../../features/flashcards/flashcardsApi";
 import { useReadingProgressQuery } from "../../features/readingProgress/readingProgressApi";
+import { recordArticleActivation } from "../../motion/articleTransition";
+import { getLocalRevealTransition, useReducedMotionPreference } from "../../motion/system";
 import type { Article, Collection, Post, SavedItem } from "../../types/models";
 import { AuthPrompt } from "../../components/auth/AuthPrompt";
 
@@ -37,7 +40,10 @@ const searchableText = (item: SavedItem) => {
 export default function SavedPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useAppSelector((state) => state.auth.user);
+  const reducedMotion = useReducedMotionPreference();
+  const localReveal = getLocalRevealTransition(reducedMotion);
   const [authPrompt, setAuthPrompt] = useState<{ open: boolean; message: string; action?: string }>({
     open: false,
     message: "Continue with Upwrite"
@@ -125,8 +131,18 @@ export default function SavedPage() {
   const openLastRead = () => {
     const last = progress[0]?.article;
     const author = last && typeof last === "object" && typeof last.author === "object" ? last.author : null;
-    if (last && typeof last === "object" && author?.username) navigate(`/articles/${author.username}/${last.slug}`);
-    else navigate("/read");
+    if (last && typeof last === "object" && author?.username) {
+      recordArticleActivation({
+        slug: last.slug,
+        instanceId: `saved-last-${last._id}`,
+        mode: "continue",
+        sourcePath: `${location.pathname}${location.search}`,
+        sourceScrollY: window.scrollY
+      });
+      navigate(`/articles/${author.username}/${last.slug}`);
+    } else {
+      navigate("/read");
+    }
   };
 
   const shareSavedItem = async (savedItem: SavedItem) => {
@@ -210,7 +226,13 @@ export default function SavedPage() {
             />
           ) : null}
 
-          <div className="space-y-4">
+          <motion.div
+            key={`${libraryTab}:${activeCollection}`}
+            initial={localReveal.initial}
+            animate={localReveal.animate}
+            transition={localReveal.transition}
+            className="space-y-4"
+          >
             {["All", "Articles"].includes(libraryTab) ? filteredSaved.map((savedItem) =>
               savedItem.contentType === "article" && savedItem.item ? (
                 <div key={savedItem._id} className="space-y-2">
@@ -271,7 +293,7 @@ export default function SavedPage() {
                 {!collections.length ? <EmptyState title="Create your first collection" description="Use collections as knowledge folders for saved articles, notes, highlights, and flashcards." /> : null}
               </div>
             ) : null}
-          </div>
+          </motion.div>
         </main>
 
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
@@ -379,17 +401,52 @@ function CollectionCard({ collection, compact, onEdit, onDelete }: { collection:
 
 function SavedItemActions({ savedItem, onShare, onMove }: { savedItem: SavedItem; onShare: () => void; onMove: () => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const content = savedItem.item;
   const article = savedItem.contentType === "article" && content && "slug" in content ? content : null;
   const articlePath = article?.author?.username ? `/articles/${article.author.username}/${article.slug}` : "/read";
+  const instanceId = `saved-action-${savedItem._id}`;
 
   return (
-    <div className="flex flex-wrap gap-2 rounded-xl border border-ink-200 bg-white/80 p-2 shadow-sm dark:border-ink-800 dark:bg-ink-900/70">
-      <Button size="sm" variant="secondary" onClick={() => navigate(articlePath)}>
+    <div
+      data-article-instance={instanceId}
+      className="flex flex-wrap gap-2 rounded-xl border border-ink-200 bg-white/80 p-2 shadow-sm dark:border-ink-800 dark:bg-ink-900/70"
+    >
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => {
+          if (article?.slug) {
+            recordArticleActivation({
+              slug: article.slug,
+              instanceId,
+              mode: "continue",
+              sourcePath: `${location.pathname}${location.search}`,
+              sourceScrollY: window.scrollY
+            });
+          }
+          navigate(articlePath);
+        }}
+      >
         <BookOpen className="h-4 w-4" />
         Continue Reading
       </Button>
-      <Button size="sm" variant="ghost" onClick={() => navigate(articlePath)}>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          if (article?.slug) {
+            recordArticleActivation({
+              slug: article.slug,
+              instanceId,
+              mode: "open",
+              sourcePath: `${location.pathname}${location.search}`,
+              sourceScrollY: window.scrollY
+            });
+          }
+          navigate(articlePath);
+        }}
+      >
         <Sparkles className="h-4 w-4" />
         Summarize
       </Button>

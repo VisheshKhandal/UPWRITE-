@@ -10,12 +10,12 @@ export const postController = {
   }),
 
   list: asyncHandler(async (req, res) => {
-    const result = await postService.list(req);
+    const result = await postService.list(req, req.user?.id);
     return sendSuccess(res, result.items, "Posts", 200, result.meta);
   }),
 
   getById: asyncHandler(async (req, res) => {
-    const post = await postService.getById(routeParam(req, "id"));
+    const post = await postService.getById(routeParam(req, "id"), req.user?.id);
     return sendSuccess(res, post, "Post");
   }),
 

@@ -4,10 +4,10 @@ import type { ContentType } from "../../types/models";
 
 export const likesApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    toggleLike: builder.mutation<{ liked: boolean }, { contentType: ContentType; contentId: string }>({
+    toggleLike: builder.mutation<{ liked: boolean; likesCount?: number }, { contentType: ContentType; contentId: string }>({
       query: (body) => ({ url: "/likes/toggle", method: "POST", body }),
-      transformResponse: (response: ApiResponse<{ liked: boolean }>) => unwrapResponse(response),
-      invalidatesTags: ["Feed", "Post", "Article"]
+      transformResponse: (response: ApiResponse<{ liked: boolean; likesCount?: number }>) => unwrapResponse(response),
+      invalidatesTags: ["Feed", "Post", "Article", "Saved"]
     })
   })
 });

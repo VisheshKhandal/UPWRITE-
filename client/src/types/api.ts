@@ -11,6 +11,7 @@ export interface PaginationMeta {
   limit: number;
   total: number;
   pages: number;
+  unreadCount?: number;
 }
 
 export interface PaginatedResult<T> {
